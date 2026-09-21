@@ -26,7 +26,7 @@ import 'package:budget/pages/activityPage.dart';
 import 'package:flutter/material.dart' show RangeValues;
 part 'tables.g.dart';
 
-int schemaVersionGlobal = 46;
+int schemaVersionGlobal = 47;
 
 // To update and migrate the database, check the README
 
@@ -221,6 +221,7 @@ enum DeleteLogType {
   ScannerTemplate,
   Objective,
   Unused, // Was for the scanner template, but is now unused
+  TransactionTag,
 }
 
 enum UpdateLogType {
@@ -233,6 +234,7 @@ enum UpdateLogType {
   ScannerTemplate,
   Objective,
   Unused, // Was for the scanner template, but is now unused
+  TransactionTag,
 }
 
 @DataClassName('DeleteLog')
@@ -334,6 +336,11 @@ class Transactions extends Table {
       text().references(Objectives, #objectivePk).nullable()();
   TextColumn get budgetFksExclude =>
       text().map(const StringListInColumnConverter()).nullable()();
+  // A transaction can only have one tag (or none)
+  TextColumn get tagFk => text()
+      .references(Tags, #tagPk)
+      .withDefault(const Constant(null))
+      .nullable()();
 
   @override
   Set<Column> get primaryKey => {transactionPk};
@@ -370,6 +377,20 @@ class Categories extends Table {
 
   @override
   Set<Column> get primaryKey => {categoryPk};
+}
+
+@DataClassName('Tag')
+class Tags extends Table {
+  TextColumn get tagPk => text().clientDefault(() => uuid.v4())();
+  TextColumn get name => text().withLength(max: NAME_LIMIT)();
+  TextColumn get colour => text().withLength(max: COLOUR_LIMIT).nullable()();
+  DateTimeColumn get dateCreated =>
+      dateTime().clientDefault(() => new DateTime.now())();
+  DateTimeColumn get dateTimeModified =>
+      dateTime().withDefault(Constant(DateTime.now())).nullable()();
+
+  @override
+  Set<Column> get primaryKey => {tagPk};
 }
 
 @DataClassName('CategoryBudgetLimit')
@@ -688,6 +709,7 @@ class CategoryWithTotal {
   ScannerTemplates,
   DeleteLogs,
   Objectives,
+  Tags,
 ])
 class FinanceDatabase extends _$FinanceDatabase {
   // FinanceDatabase() : super(_openConnection());
@@ -1161,6 +1183,22 @@ class FinanceDatabase extends _$FinanceDatabase {
               } catch (e) {
                 print(
                     "Migration Error: Error creating column objectives.type " +
+                        e.toString());
+              }
+            },
+            from46To47: (m, schema) async {
+              try {
+                await m.createTable(schema.tags);
+              } catch (e) {
+                print("Migration Error: Error creating table tags " +
+                    e.toString());
+              }
+              try {
+                await m.addColumn(
+                    schema.transactions, schema.transactions.tagFk);
+              } catch (e) {
+                print(
+                    "Migration Error: Error creating column transactions.tagFk " +
                         e.toString());
               }
             },
@@ -5416,6 +5454,90 @@ class FinanceDatabase extends _$FinanceDatabase {
 
     // Delete the old category
     await database.deleteCategory(categoryFrom.categoryPk, categoryFrom.order);
+  }
+
+  // ************************************************************
+  // Tags
+  // ************************************************************
+
+  Stream<List<Tag>> watchAllTags({String? searchFor, int? limit}) {
+    return (select(tags)
+          ..where((t) => (searchFor == null || searchFor == ""
+              ? Constant(true)
+              : t.name.collate(Collate.noCase).like("%" + (searchFor) + "%")))
+          ..orderBy([(t) => OrderingTerm.desc(t.dateCreated)])
+          ..limit(limit ?? DEFAULT_LIMIT))
+        .watch();
+  }
+
+  Future<Tag> getTagInstance(String tagPk) {
+    return (select(tags)..where((t) => t.tagPk.equals(tagPk))).getSingle();
+  }
+
+  Future<Tag?> getTagInstanceOrNull(String tagPk) {
+    return (select(tags)..where((t) => t.tagPk.equals(tagPk)))
+        .getSingleOrNull();
+  }
+
+  Stream<Tag?> watchTag(String tagPk) {
+    return (select(tags)..where((t) => t.tagPk.equals(tagPk)))
+        .watchSingleOrNull();
+  }
+
+  Future<Tag?> getTagInstanceGivenNameOrNull(String name) async {
+    return (await (select(tags)
+              ..where((t) =>
+                  t.name.lower().trim().equals(name.toLowerCase().trim())))
+            .get())
+        .firstOrNull;
+  }
+
+  Future<int> createOrUpdateTag(
+    Tag tag, {
+    DateTime? customDateTimeModified,
+    bool insert = false,
+  }) {
+    tag = tag.copyWith(name: tag.name.trim());
+    tag = tag.copyWith(
+        dateTimeModified: Value(customDateTimeModified ?? DateTime.now()));
+    TagsCompanion companionToInsert = tag.toCompanion(true);
+
+    if (insert) {
+      companionToInsert = companionToInsert.copyWith(tagPk: Value.absent());
+    }
+
+    return into(tags)
+        .insert(companionToInsert, mode: InsertMode.insertOrReplace);
+  }
+
+  // Removes the tag from any transactions tagged with it, then deletes the tag
+  Future deleteTag(String tagPk) async {
+    await (update(transactions)..where((t) => t.tagFk.equals(tagPk)))
+        .write(TransactionsCompanion(tagFk: Value(null)));
+    await createDeleteLog(DeleteLogType.TransactionTag, tagPk);
+    await (delete(tags)..where((t) => t.tagPk.equals(tagPk))).go();
+  }
+
+  Future mergeAndDeleteTag(Tag tagFrom, Tag tagTo) async {
+    await (update(transactions)..where((t) => t.tagFk.equals(tagFrom.tagPk)))
+        .write(TransactionsCompanion(tagFk: Value(tagTo.tagPk)));
+    await deleteTag(tagFrom.tagPk);
+  }
+
+  Stream<int?> watchTotalCountOfTransactionsWithTag(String tagPk) {
+    final totalCount = transactions.transactionPk.count();
+    final query = selectOnly(transactions)
+      ..addColumns([totalCount])
+      ..where(transactions.tagFk.equals(tagPk));
+    return query.map((row) => row.read(totalCount)).watchSingleOrNull();
+  }
+
+  Stream<double?> watchTotalSpentForTag(String tagPk) {
+    final totalAmt = transactions.amount.sum();
+    final query = selectOnly(transactions)
+      ..addColumns([totalAmt])
+      ..where(transactions.tagFk.equals(tagPk));
+    return query.map((row) => row.read(totalAmt)).watchSingleOrNull();
   }
 
   Stream<double?> totalDoubleStream(List<Stream<double?>> mergedStreams) {

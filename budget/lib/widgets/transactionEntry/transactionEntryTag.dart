@@ -4,6 +4,7 @@ import 'package:budget/pages/objectivesListPage.dart';
 import 'package:budget/struct/databaseGlobal.dart';
 import 'package:budget/struct/settings.dart';
 import 'package:budget/widgets/categoryIcon.dart';
+import 'package:budget/widgets/tappable.dart';
 import 'package:budget/widgets/textWidgets.dart';
 import 'package:budget/widgets/util/infiniteRotationAnimation.dart';
 import 'package:easy_localization/easy_localization.dart' hide TextDirection;
@@ -47,7 +48,7 @@ class TransactionEntryTag extends StatelessWidget {
       data: Theme.of(context)
           .copyWith(colorScheme: getColorScheme(Theme.of(context).brightness)),
       child: Padding(
-        padding: const EdgeInsetsDirectional.only(top: 1.0),
+        padding: const EdgeInsetsDirectional.only(top: 4.5),
         child: LayoutBuilder(builder: (context, constraints) {
           double maxWidth = constraints.maxWidth;
           List<bool> tagsToShow = [
@@ -58,6 +59,7 @@ class TransactionEntryTag extends StatelessWidget {
             transaction.objectiveLoanFk != null, //3
             transaction.objectiveFk != null, //4
             showExcludedBudgetTagCheck, //5
+            transaction.tagFk != null, //6
           ];
           int tagCount = tagsToShow.where((element) => element == true).length;
           List<Widget> tags = [
@@ -173,6 +175,22 @@ class TransactionEntryTag extends StatelessWidget {
               color: Colors.grey,
               name: "excluded".tr(),
             ),
+            // 6
+            Builder(builder: (context) {
+              return StreamBuilder<Tag?>(
+                stream: database.watchTag(transaction.tagFk!),
+                builder: (context, snapshot) {
+                  Tag? tag = snapshot.data;
+                  if (tag == null) return SizedBox.shrink();
+                  return TransactionTag(
+                    color: HexColor(tag.colour,
+                        defaultColor: Theme.of(context).colorScheme.primary),
+                    name: tag.name,
+                    tagShape: true,
+                  );
+                },
+              );
+            }),
           ];
           // work in preogress...
           // if maxwidth > maxWidth/tagCount, wrap in flexible, otherwise dont
@@ -267,54 +285,96 @@ class TransactionTag extends StatelessWidget {
   final Color color;
   final String name;
   final EdgeInsetsDirectional margin;
-  final EdgeInsetsDirectional padding;
+  final EdgeInsetsDirectional? padding;
   final Widget? leading;
   final double? progress;
+  final bool tagShape;
+  final double? fontSize;
+  final VoidCallback? onTap;
+  final Color? customBackgroundColor;
 
   TransactionTag({
     required this.color,
     required this.name,
     this.margin = const EdgeInsetsDirectional.only(start: 3),
-    this.padding =
-        const EdgeInsetsDirectional.symmetric(horizontal: 4.5, vertical: 1.05),
+    this.padding,
     this.leading,
     this.progress,
+    this.tagShape = false,
+    this.fontSize,
+    this.onTap,
+    this.customBackgroundColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    Widget tagWidget = Container(
-      decoration: BoxDecoration(
-        color: color.withOpacity(progress != null ? 0.15 : 0.25),
-        borderRadius: BorderRadiusDirectional.circular(6),
-      ),
-      padding: padding,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          leading ?? SizedBox.shrink(),
-          Flexible(
-            child: TextFont(
-              text: name,
-              fontSize: 11.5,
-              textColor: getColor(context, "black").withOpacity(0.7),
-              maxLines:
-                  appStateSettings["fadeTransactionNameOverflows"] == false
-                      ? null
-                      : 1,
-              overflow:
-                  appStateSettings["fadeTransactionNameOverflows"] == false
-                      ? null
-                      : TextOverflow.fade,
-              softWrap:
-                  appStateSettings["fadeTransactionNameOverflows"] == false
-                      ? null
-                      : false,
-            ),
+    bool isRTL = Directionality.of(context) == TextDirection.rtl;
+    EdgeInsetsDirectional effectivePadding = padding ??
+        (tagShape
+            ? const EdgeInsetsDirectional.only(
+                start: 15.5,
+                end: 9.5,
+                top: 1.2,
+                bottom: 1.2,
+              )
+            : const EdgeInsetsDirectional.symmetric(
+                horizontal: 4.5, vertical: 1.05));
+
+    Widget tagContent = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        leading ?? SizedBox.shrink(),
+        Flexible(
+          child: TextFont(
+            text: name,
+            fontSize: fontSize ?? 11.5,
+            textColor: getColor(context, "black").withOpacity(0.7),
+            maxLines: appStateSettings["fadeTransactionNameOverflows"] == false
+                ? null
+                : 1,
+            overflow: appStateSettings["fadeTransactionNameOverflows"] == false
+                ? null
+                : TextOverflow.fade,
+            softWrap: appStateSettings["fadeTransactionNameOverflows"] == false
+                ? null
+                : false,
           ),
-        ],
-      ),
+        ),
+      ],
     );
+
+    Color resolvedBgColor = customBackgroundColor ??
+        color.withOpacity(progress != null ? 0.15 : 0.25);
+
+    Widget tagWidget;
+    if (tagShape) {
+      tagWidget = ClipPath(
+        clipper: TagClipper(isRTL: isRTL),
+        child: Container(
+          color: resolvedBgColor,
+          padding: effectivePadding,
+          child: tagContent,
+        ),
+      );
+    } else {
+      tagWidget = Container(
+        decoration: BoxDecoration(
+          color: resolvedBgColor,
+          borderRadius: BorderRadiusDirectional.circular(6),
+        ),
+        padding: effectivePadding,
+        child: tagContent,
+      );
+    }
+
+    if (onTap != null) {
+      tagWidget = Tappable(
+        color: Colors.transparent,
+        onTap: onTap,
+        child: tagWidget,
+      );
+    }
+
     if (progress != null)
       return LayoutBuilder(builder: (context, constraints) {
         return ConstrainedBox(
@@ -354,6 +414,100 @@ class TransactionTag extends StatelessWidget {
       });
     return Padding(padding: margin, child: tagWidget);
   }
+}
+
+class TagClipper extends CustomClipper<Path> {
+  final bool isRTL;
+
+  const TagClipper({this.isRTL = false});
+
+  @override
+  Path getClip(Size size) {
+    return buildTagPath(size, isRTL);
+  }
+
+  @override
+  bool shouldReclip(covariant TagClipper oldClipper) {
+    return oldClipper.isRTL != isRTL;
+  }
+}
+
+Path buildTagPath(Size size, bool isRTL) {
+  final double w = size.width;
+  final double h = size.height;
+  if (w <= 0 || h <= 0) return Path();
+
+  // Radius for the rectangular corners (opposite side of triangle)
+  final double r = 5.0.clamp(1.0, h / 2);
+
+  // Depth of the triangular tip
+  // final double tipWidth = (h * 0.42).clamp(5.0, 8.5);
+  // final double clampedTipWidth = tipWidth.clamp(2.0, w * 0.35);
+  final double tipWidth = (h * 0.62).clamp(5.0, 10.5);
+  final double clampedTipWidth = tipWidth.clamp(2.0, w * 0.35);
+
+  // Parameters for smooth rounded apex
+  final double tApex = 0.35;
+  final double xApex = clampedTipWidth * tApex;
+  final double yApex = (h / 2) * tApex;
+
+  final double rCorner = 1.8;
+  final double slope = (h / 2) / clampedTipWidth;
+
+  final Path path = Path();
+
+  if (!isRTL) {
+    // Triangular point on the LEFT, rectangular on the RIGHT
+    path.moveTo(clampedTipWidth + rCorner, 0);
+    // Straight top edge
+    path.lineTo(w - r, 0);
+    // Top-right rounded corner
+    path.arcToPoint(Offset(w, r), radius: Radius.circular(r));
+    // Straight right edge
+    path.lineTo(w, h - r);
+    // Bottom-right rounded corner
+    path.arcToPoint(Offset(w - r, h), radius: Radius.circular(r));
+    // Bottom horizontal edge
+    path.lineTo(clampedTipWidth + rCorner, h);
+    // Smooth transition from horizontal bottom to diagonal slope
+    path.quadraticBezierTo(
+      clampedTipWidth,
+      h,
+      clampedTipWidth - rCorner * 0.7,
+      h - rCorner * 0.7 * slope,
+    );
+    // Diagonal slope to apex curve start
+    path.lineTo(xApex, h / 2 + yApex);
+    // Smooth rounded apex at the tip (x = 0)
+    path.quadraticBezierTo(0, h / 2, xApex, h / 2 - yApex);
+    // Diagonal slope up to top junction
+    path.lineTo(clampedTipWidth - rCorner * 0.7, rCorner * 0.7 * slope);
+    // Smooth transition into horizontal top line
+    path.quadraticBezierTo(clampedTipWidth, 0, clampedTipWidth + rCorner, 0);
+    path.close();
+  } else {
+    // RTL: Triangular point on the RIGHT, rectangular on the LEFT
+    path.moveTo(w - clampedTipWidth - rCorner, 0);
+    path.lineTo(r, 0);
+    path.arcToPoint(Offset(0, r), radius: Radius.circular(r), clockwise: false);
+    path.lineTo(0, h - r);
+    path.arcToPoint(Offset(r, h), radius: Radius.circular(r), clockwise: false);
+    path.lineTo(w - clampedTipWidth - rCorner, h);
+    path.quadraticBezierTo(
+      w - clampedTipWidth,
+      h,
+      w - clampedTipWidth + rCorner * 0.7,
+      h - rCorner * 0.7 * slope,
+    );
+    path.lineTo(w - xApex, h / 2 + yApex);
+    path.quadraticBezierTo(w, h / 2, w - xApex, h / 2 - yApex);
+    path.lineTo(w - clampedTipWidth + rCorner * 0.7, rCorner * 0.7 * slope);
+    path.quadraticBezierTo(
+        w - clampedTipWidth, 0, w - clampedTipWidth - rCorner, 0);
+    path.close();
+  }
+
+  return path;
 }
 
 class SharedBudgetLabel extends StatelessWidget {

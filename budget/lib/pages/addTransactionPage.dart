@@ -67,6 +67,8 @@ import 'package:budget/struct/linkHighlighter.dart';
 import 'package:budget/widgets/listItem.dart';
 import 'package:budget/widgets/outlinedButtonStacked.dart';
 import 'package:budget/widgets/tappableTextEntry.dart';
+import 'package:budget/widgets/transactionEntry/transactionEntryTag.dart';
+import 'dart:math';
 
 //TODO
 //only show the tags that correspond to selected category
@@ -157,6 +159,7 @@ class _AddTransactionPageState extends State<AddTransactionPage>
   bool notesInputFocused = false;
   bool showMoreOptions = false;
   List<String> selectedExcludedBudgetPks = [];
+  String? selectedTagPk;
   late bool isAddedToLoanObjective =
       widget.selectedObjective?.type == ObjectiveType.loan ||
           widget.transaction?.objectiveLoanFk != null;
@@ -319,6 +322,12 @@ class _AddTransactionPageState extends State<AddTransactionPage>
     return;
   }
 
+  void setSelectedTag(String? tagPk) {
+    setState(() {
+      selectedTagPk = tagPk;
+    });
+  }
+
   void setSelectedObjectivePk(String? selectedObjectivePkPassed) {
     setState(() {
       selectedObjectivePk = selectedObjectivePkPassed;
@@ -352,6 +361,11 @@ class _AddTransactionPageState extends State<AddTransactionPage>
     setState(() {
       selectedIncome = value;
       initiallySettingSelectedIncome = initiallySetting;
+
+      // Tagging is only available for expenses
+      if (selectedIncome == true) {
+        selectedTagPk = null;
+      }
 
       // Flip credit/debt selection if income/expense changed
       if (selectedType == TransactionSpecialType.credit &&
@@ -701,6 +715,8 @@ class _AddTransactionPageState extends State<AddTransactionPage>
       objectiveLoanFk: selectedObjectiveLoanPk,
       budgetFksExclude:
           selectedExcludedBudgetPks.isEmpty ? null : selectedExcludedBudgetPks,
+      // Tagging is only available for expenses
+      tagFk: selectedIncome ? null : selectedTagPk,
     );
 
     return createdTransaction;
@@ -755,6 +771,7 @@ class _AddTransactionPageState extends State<AddTransactionPage>
       selectedObjectivePk = widget.transaction!.objectiveFk;
       selectedObjectiveLoanPk = widget.transaction!.objectiveLoanFk;
       selectedExcludedBudgetPks = widget.transaction!.budgetFksExclude ?? [];
+      selectedTagPk = widget.transaction!.tagFk;
       // var amountString = widget.transaction!.amount.toStringAsFixed(2);
       // if (amountString.substring(amountString.length - 2) == "00") {
       //   selectedAmountCalculation =
@@ -1572,6 +1589,9 @@ class _AddTransactionPageState extends State<AddTransactionPage>
                     ],
                   )),
               AnimatedSizeSwitcher(
+                sizeAlignment: AlignmentDirectional.topCenter,
+                sizeDuration: Duration(milliseconds: 300),
+                sizeCurve: Curves.easeInOut,
                 child: showMoreOptions == false
                     ? Padding(
                         padding: const EdgeInsetsDirectional.only(top: 5),
@@ -1664,6 +1684,11 @@ class _AddTransactionPageState extends State<AddTransactionPage>
                             selectedExcludedBudgetPks:
                                 selectedExcludedBudgetPks,
                           ),
+                          if (selectedIncome == false)
+                            TransactionTagPicker(
+                              selectedTagPk: selectedTagPk,
+                              onTagSelected: setSelectedTag,
+                            ),
                         ],
                       ),
               ),
@@ -1859,7 +1884,7 @@ class _AddTransactionPageState extends State<AddTransactionPage>
                 color: Colors.transparent,
                 child: Container(
                   height: 136,
-                  padding: const EdgeInsetsDirectional.only(start: 17, end: 20),
+                  padding: const EdgeInsetsDirectional.only(start: 17),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -1878,6 +1903,71 @@ class _AddTransactionPageState extends State<AddTransactionPage>
                   ),
                 ),
               ),
+              if (selectedTagPk != null && selectedIncome == false)
+                StreamBuilder<Tag?>(
+                  stream: database.watchTag(selectedTagPk!),
+                  builder: (context, snapshot) {
+                    Tag? tag = snapshot.data;
+                    if (tag == null) return SizedBox(width: 20);
+                    Color tagColor = HexColor(
+                      tag.colour,
+                      defaultColor: Theme.of(context).colorScheme.primary,
+                    );
+                    return Padding(
+                        padding: const EdgeInsetsDirectional.only(start: 20),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: 130),
+                          // Frosted neutral pill so the tag color never clashes with the category header color
+                          child: Tappable(
+                            color: Colors.transparent,
+                            borderRadius: 20,
+                            onTap: () {
+                              setState(() {
+                                showMoreOptions = true;
+                              });
+                            },
+                            child: ClipPath(
+                              clipper: TagClipper(
+                                  isRTL: Directionality.of(context) ==
+                                      TextDirection.RTL),
+                              child: Container(
+                                color: Colors.black.withOpacity(0.12),
+                                padding: const EdgeInsetsDirectional.only(
+                                  start: 15.5,
+                                  end: 9.5,
+                                  top: 5,
+                                  bottom: 5,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: tagColor,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    SizedBox(width: 6),
+                                    Flexible(
+                                      child: TextFont(
+                                        text: tag.name,
+                                        fontSize: 13,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ));
+                  },
+                )
+              else
+                SizedBox(width: 20),
               Expanded(
                 child: CustomContextMenu(
                   buttonItems: [
@@ -3386,6 +3476,385 @@ class _SelectExcludeBudgetState extends State<SelectExcludeBudget> {
           return Container();
         }
       },
+    );
+  }
+}
+
+class TransactionTagPicker extends StatefulWidget {
+  const TransactionTagPicker({
+    required this.selectedTagPk,
+    required this.onTagSelected,
+    super.key,
+  });
+
+  final String? selectedTagPk;
+  final Function(String?) onTagSelected;
+
+  @override
+  State<TransactionTagPicker> createState() => _TransactionTagPickerState();
+}
+
+class _TransactionTagPickerState extends State<TransactionTagPicker> {
+  final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+  final GlobalKey _pickerKey = GlobalKey();
+
+  late Stream<List<Tag>> _tagsStream;
+  List<Tag>? _initialTags;
+  String? _selectedTagPk;
+  String _query = "";
+  bool _showDropdown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedTagPk = widget.selectedTagPk;
+    _tagsStream = database.watchAllTags(limit: 50);
+    _loadInitialTagName();
+    _loadInitialTags();
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  Future<void> _loadInitialTags() async {
+    try {
+      List<Tag> tags = await database.watchAllTags(limit: 50).first;
+      if (mounted) {
+        setState(() {
+          _initialTags = tags;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadInitialTagName() async {
+    if (widget.selectedTagPk == null) return;
+    Tag? tag = await database.getTagInstanceOrNull(widget.selectedTagPk!);
+    if (mounted && tag != null) {
+      setState(() {
+        _controller.text = tag.name;
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant TransactionTagPicker oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selectedTagPk != oldWidget.selectedTagPk) {
+      _selectedTagPk = widget.selectedTagPk;
+      _loadInitialTagName();
+    }
+  }
+
+  void _onFocusChange() {
+    if (_focusNode.hasFocus) {
+      setState(() {
+        _showDropdown = true;
+      });
+      _scrollToMakeVisible();
+    } else {
+      // Delay hiding so a tap on a dropdown row can still register
+      Future.delayed(Duration(milliseconds: 200), () {
+        if (mounted && _focusNode.hasFocus == false) {
+          setState(() {
+            _showDropdown = false;
+          });
+        }
+      });
+    }
+  }
+
+  void _scrollToMakeVisible() {
+    for (int delay in [150, 350, 550]) {
+      Future.delayed(Duration(milliseconds: delay), () {
+        if (!mounted || !_showDropdown || !_focusNode.hasFocus) return;
+        final targetContext = _pickerKey.currentContext;
+        if (targetContext != null) {
+          Scrollable.ensureVisible(
+            targetContext,
+            alignment: 0.08,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _selectTag(Tag tag) {
+    setState(() {
+      _selectedTagPk = tag.tagPk;
+      _controller.text = tag.name;
+      _query = "";
+      _showDropdown = false;
+    });
+    widget.onTagSelected(tag.tagPk);
+    _focusNode.unfocus();
+  }
+
+  void _clearTag() {
+    setState(() {
+      _selectedTagPk = null;
+      _controller.clear();
+      _query = "";
+      _showDropdown = false;
+    });
+    widget.onTagSelected(null);
+    _focusNode.unfocus();
+  }
+
+  Future<void> _createAndSelectTag(String name) async {
+    String trimmedName = name.trim();
+    if (trimmedName == "") return;
+    List<Color> availableColors = selectableColors(context);
+    Color randomColor =
+        availableColors[Random().nextInt(availableColors.length)];
+    await database.createOrUpdateTag(
+      Tag(
+        tagPk: "-1",
+        name: trimmedName,
+        colour: toHexString(randomColor),
+        dateCreated: DateTime.now(),
+        dateTimeModified: DateTime.now(),
+      ),
+      insert: true,
+    );
+    Tag? createdTag = await database.getTagInstanceGivenNameOrNull(trimmedName);
+    if (createdTag != null) _selectTag(createdTag);
+  }
+
+  Widget _buildTagRow(Tag tag) {
+    Color tagColor = HexColor(
+      tag.colour,
+      defaultColor: Theme.of(context).colorScheme.primary,
+    );
+    return Tappable(
+      color: Colors.transparent,
+      borderRadius: 0,
+      onTap: () => _selectTag(tag),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.only(
+            top: 10, start: 5, end: 12, bottom: 10),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Flexible(
+              child: Container(
+                padding: const EdgeInsetsDirectional.symmetric(
+                    horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: dynamicPastel(context, tagColor, amount: 0.35),
+                  borderRadius: BorderRadiusDirectional.circular(20),
+                ),
+                child: TextFont(
+                  text: tag.name,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  maxLines: 1,
+                ),
+              ),
+            ),
+            SizedBox(width: 8),
+            TextFont(
+              text: getTimeAgo(tag.dateCreated),
+              fontSize: 12,
+              textColor: getColor(context, "textLight"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddRow(String name) {
+    return Tappable(
+      color: Colors.transparent,
+      borderRadius: 0,
+      onTap: () => _createAndSelectTag(name),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.only(
+            top: 10, start: 5, end: 12, bottom: 10),
+        child: Row(
+          children: [
+            Icon(
+              appStateSettings["outlinedIcons"]
+                  ? Icons.add_outlined
+                  : Icons.add_rounded,
+              size: 18,
+            ),
+            SizedBox(width: 10),
+            Expanded(
+              child: TextFont(
+                text: "add-tag".tr() + " \u201c" + name + "\u201d",
+                fontSize: 14,
+                maxLines: 1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return HorizontalBreakAbove(
+      key: _pickerKey,
+      enabled: enableDoubleColumn(context),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.only(top: 5),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            StickyLabelDivider(info: "tag".tr()),
+            Padding(
+              padding: const EdgeInsetsDirectional.symmetric(horizontal: 16),
+              child: ClipRRect(
+                borderRadius: BorderRadiusDirectional.circular(
+                    getPlatform() == PlatformOS.isIOS ? 8 : 15),
+                child: Column(
+                  children: [
+                    Container(
+                      color: appStateSettings["materialYou"]
+                          ? Theme.of(context).colorScheme.secondaryContainer
+                          : getColor(context, "canvasContainer"),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextInput(
+                              controller: _controller,
+                              focusNode: _focusNode,
+                              labelText: "tag-placeholder".tr(),
+                              icon: appStateSettings["outlinedIcons"]
+                                  ? Icons.sell_outlined
+                                  : Icons.sell_rounded,
+                              onTap: () {
+                                setState(() {
+                                  _showDropdown = true;
+                                });
+                                _scrollToMakeVisible();
+                              },
+                              onChanged: (text) {
+                                setState(() {
+                                  _query = text;
+                                  _showDropdown = true;
+                                  if (_selectedTagPk != null) {
+                                    _selectedTagPk = null;
+                                    widget.onTagSelected(null);
+                                  }
+                                });
+                              },
+                            ),
+                          ),
+                          AnimatedSize(
+                            duration: Duration(milliseconds: 200),
+                            curve: Curves.easeInOut,
+                            child: (_selectedTagPk != null ||
+                                    _controller.text.isNotEmpty)
+                                ? Padding(
+                                    padding: const EdgeInsetsDirectional.only(
+                                        end: 8),
+                                    child: IconButtonScaled(
+                                      tooltip: "clear".tr(),
+                                      iconData:
+                                          appStateSettings["outlinedIcons"]
+                                              ? Icons.clear_outlined
+                                              : Icons.clear_rounded,
+                                      iconSize: 20,
+                                      scale: 1.3,
+                                      onTap: _clearTag,
+                                    ),
+                                  )
+                                : SizedBox.shrink(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    AnimatedSize(
+                      duration: Duration(milliseconds: 250),
+                      curve: Curves.easeInOut,
+                      alignment: AlignmentDirectional.topCenter,
+                      child: _showDropdown == false
+                          ? SizedBox(width: double.infinity)
+                          : StreamBuilder<List<Tag>>(
+                              stream: _tagsStream,
+                              initialData: _initialTags,
+                              builder: (context, snapshot) {
+                                List<Tag> allTags = snapshot.data ?? [];
+                                String cleanQuery = _query.trim();
+                                List<Tag> tagsToShow = cleanQuery.isEmpty
+                                    ? allTags.take(5).toList()
+                                    : allTags
+                                        .where((tag) => tag.name
+                                            .toLowerCase()
+                                            .contains(cleanQuery.toLowerCase()))
+                                        .take(5)
+                                        .toList();
+
+                                bool hasExactMatch = tagsToShow.any((tag) =>
+                                    tag.name.toLowerCase() ==
+                                    cleanQuery.toLowerCase());
+                                bool showAddRow =
+                                    cleanQuery.isNotEmpty && !hasExactMatch;
+
+                                List<Widget> rows = [
+                                  for (Tag tag in tagsToShow) _buildTagRow(tag),
+                                  if (showAddRow) _buildAddRow(cleanQuery),
+                                ];
+
+                                if (rows.isEmpty)
+                                  return SizedBox(width: double.infinity);
+
+                                return Column(
+                                  children: [
+                                    HorizontalBreak(
+                                      padding: EdgeInsetsDirectional.zero,
+                                      color: appStateSettings["materialYou"]
+                                          ? dynamicPastel(
+                                              context,
+                                              Theme.of(context)
+                                                  .colorScheme
+                                                  .secondaryContainer,
+                                              amount: 0.1,
+                                              inverse: true,
+                                            )
+                                          : getColor(
+                                              context, "lightDarkAccent"),
+                                    ),
+                                    Container(
+                                      width: double.infinity,
+                                      color: appStateSettings["materialYou"]
+                                          ? Theme.of(context)
+                                              .colorScheme
+                                              .secondaryContainer
+                                          : getColor(
+                                              context, "canvasContainer"),
+                                      padding: const EdgeInsetsDirectional.only(
+                                          start: 16, bottom: 6),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: rows,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

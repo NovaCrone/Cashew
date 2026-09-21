@@ -26,6 +26,7 @@ import 'package:budget/pages/activityPage.dart';
 import 'package:budget/pages/editAssociatedTitlesPage.dart';
 import 'package:budget/pages/editBudgetPage.dart';
 import 'package:budget/pages/editCategoriesPage.dart';
+import 'package:budget/pages/editTagsPage.dart';
 import 'package:budget/pages/editWalletsPage.dart';
 import 'package:budget/pages/notificationsPage.dart';
 import 'package:budget/pages/subscriptionsPage.dart';
@@ -345,6 +346,16 @@ class MorePages extends StatelessWidget {
                     openPage: EditAssociatedTitlesPage(),
                     title: navBarIconsData["titlesDetails"]!.label.tr(),
                     icon: navBarIconsData["titlesDetails"]!.iconData,
+                    isOutlined: true,
+                  ),
+                ),
+                Expanded(
+                  flex: 1,
+                  child: SettingsContainerOpenPage(
+                    isOutlinedColumn: true,
+                    openPage: EditTagsPage(),
+                    title: navBarIconsData["tagsDetails"]!.label.tr(),
+                    icon: navBarIconsData["tagsDetails"]!.iconData,
                     isOutlined: true,
                   ),
                 )
