@@ -5917,6 +5917,9 @@ class FinanceDatabase extends _$FinanceDatabase {
         onlyShowBasedOnObjectiveFks(tbl, searchFilters.objectivePks);
     Expression<bool> isInObjectiveLoanPks =
         onlyShowBasedOnObjectiveLoanFks(tbl, searchFilters.objectiveLoanPks);
+    Expression<bool> isInTagPks = searchFilters.tagPks.isEmpty
+        ? Constant(true)
+        : tbl.tagFk.isIn(searchFilters.tagPks);
 
     Expression<bool> isBalanceCorrectionAnd =
         searchFilters.categoryPks.contains("0")
@@ -6065,6 +6068,7 @@ class FinanceDatabase extends _$FinanceDatabase {
         isInExcludedBudgetPks &
         isInObjectivePks &
         isInObjectiveLoanPks &
+        isInTagPks &
         isInQuery &
         (isIncome | isExpense) &
         isPositiveCashFlow &

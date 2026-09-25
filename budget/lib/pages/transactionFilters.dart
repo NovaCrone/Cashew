@@ -15,7 +15,9 @@ import 'package:budget/widgets/openPopup.dart';
 import 'package:budget/widgets/button.dart';
 import 'package:budget/widgets/selectAmount.dart';
 import 'package:budget/widgets/selectCategory.dart';
+import 'package:budget/widgets/tappable.dart';
 import 'package:budget/widgets/textInput.dart';
+import 'package:budget/widgets/textWidgets.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:budget/colors.dart';
@@ -32,6 +34,7 @@ class SearchFilters {
     this.excludedBudgetPks = const [],
     this.objectivePks = const [],
     this.objectiveLoanPks = const [],
+    List<String>? tagPks,
     this.expenseIncome = const [],
     this.positiveCashFlow, //Similar to isIncome, but includes anything that is positive amount (loans)
     this.paidStatus = const [],
@@ -55,6 +58,7 @@ class SearchFilters {
     objectivePks = this.objectivePks.isEmpty ? [] : this.objectivePks;
     objectiveLoanPks =
         this.objectiveLoanPks.isEmpty ? [] : this.objectiveLoanPks;
+    this.tagPks = tagPks ?? [];
     expenseIncome = this.expenseIncome.isEmpty ? [] : this.expenseIncome;
     positiveCashFlow = this.positiveCashFlow;
     paidStatus = this.paidStatus.isEmpty ? [] : this.paidStatus;
@@ -76,6 +80,9 @@ class SearchFilters {
   List<String> excludedBudgetPks;
   List<String?> objectivePks;
   List<String?> objectiveLoanPks;
+  List<String>? _tagPks;
+  List<String> get tagPks => _tagPks ??= [];
+  set tagPks(List<String> value) => _tagPks = value;
   List<ExpenseIncome> expenseIncome;
   bool? positiveCashFlow;
   List<PaidStatus> paidStatus;
@@ -97,6 +104,7 @@ class SearchFilters {
     List<String>? excludedBudgetPks,
     List<String?>? objectivePks,
     List<String?>? objectiveLoanPks,
+    List<String>? tagPks,
     List<ExpenseIncome>? expenseIncome,
     bool? positiveCashFlow,
     List<PaidStatus>? paidStatus,
@@ -118,6 +126,7 @@ class SearchFilters {
       excludedBudgetPks: excludedBudgetPks ?? this.excludedBudgetPks,
       objectivePks: objectivePks ?? this.objectivePks,
       objectiveLoanPks: objectiveLoanPks ?? this.objectiveLoanPks,
+      tagPks: tagPks ?? this.tagPks,
       expenseIncome: expenseIncome ?? this.expenseIncome,
       positiveCashFlow: positiveCashFlow,
       paidStatus: paidStatus ?? this.paidStatus,
@@ -143,6 +152,7 @@ class SearchFilters {
     excludedBudgetPks = [];
     objectivePks = [];
     objectiveLoanPks = [];
+    tagPks = [];
     expenseIncome = [];
     positiveCashFlow = null;
     paidStatus = [];
@@ -165,6 +175,7 @@ class SearchFilters {
         excludedBudgetPks.isEmpty &&
         objectivePks.isEmpty &&
         objectiveLoanPks.isEmpty &&
+        tagPks.isEmpty &&
         expenseIncome.isEmpty &&
         positiveCashFlow == null &&
         paidStatus.isEmpty &&
@@ -231,6 +242,9 @@ class SearchFilters {
             } else {
               objectiveLoanPks.add(value);
             }
+            break;
+          case 'tagPks':
+            tagPks.add(value);
             break;
           case 'expenseIncome':
             expenseIncome.add(ExpenseIncome.values[int.parse(value)]);
@@ -345,6 +359,9 @@ class SearchFilters {
     }
     for (String? element in objectiveLoanPks) {
       outString += "objectiveLoanPks:-:" + element.toString() + ":-:";
+    }
+    for (String element in tagPks) {
+      outString += "tagPks:-:" + element + ":-:";
     }
     for (ExpenseIncome element in expenseIncome) {
       outString += "expenseIncome:-:" + (element.index).toString() + ":-:";
@@ -1184,6 +1201,8 @@ class _TransactionFiltersSelectionState
                   );
                   Future.delayed(Duration(milliseconds: 50), () {
                     // delay cannot be zero
+                    if (!mounted || !titleContainsScrollController.hasClients)
+                      return;
                     titleContainsScrollController.animateTo(
                       titleContainsScrollController.position.maxScrollExtent,
                       curve: Curves.easeInOutCubicEmphasized,
@@ -1219,7 +1238,15 @@ class _TransactionFiltersSelectionState
                 icon: appStateSettings["outlinedIcons"]
                     ? Icons.sticky_note_2_outlined
                     : Icons.sticky_note_2_rounded,
-              )
+              ),
+              SizedBox(height: 7),
+              TransactionFilterTagPicker(
+                selectedTagPks: selectedFilters.tagPks,
+                onChanged: (tagPks) {
+                  selectedFilters.tagPks = tagPks;
+                  setSearchFilters();
+                },
+              ),
             ],
           ),
         ),
@@ -1259,6 +1286,251 @@ class _TransactionFiltersSelectionState
   }
 }
 
+class TransactionFilterTagPicker extends StatefulWidget {
+  const TransactionFilterTagPicker({
+    required this.selectedTagPks,
+    required this.onChanged,
+    super.key,
+  });
+
+  final List<String> selectedTagPks;
+  final ValueChanged<List<String>> onChanged;
+
+  @override
+  State<TransactionFilterTagPicker> createState() =>
+      _TransactionFilterTagPickerState();
+}
+
+class _TransactionFilterTagPickerState
+    extends State<TransactionFilterTagPicker> {
+  final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+  late List<String> _selectedTagPks = [...widget.selectedTagPks];
+  bool _showDropdown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant TransactionFilterTagPicker oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selectedTagPks.toString() !=
+        oldWidget.selectedTagPks.toString()) {
+      _selectedTagPks = [...widget.selectedTagPks];
+    }
+  }
+
+  void _onFocusChange() {
+    if (_focusNode.hasFocus) {
+      setState(() => _showDropdown = true);
+    } else {
+      Future.delayed(Duration(milliseconds: 200), () {
+        if (mounted && !_focusNode.hasFocus) {
+          setState(() => _showDropdown = false);
+        }
+      });
+    }
+  }
+
+  void _toggleTag(Tag tag) {
+    setState(() {
+      if (_selectedTagPks.contains(tag.tagPk)) {
+        _selectedTagPks.remove(tag.tagPk);
+      } else {
+        _selectedTagPks.add(tag.tagPk);
+      }
+      _controller.clear();
+    });
+    widget.onChanged([..._selectedTagPks]);
+    _focusNode.requestFocus();
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<Tag>>(
+      stream: database.watchAllTags(limit: 50),
+      builder: (context, snapshot) {
+        List<Tag> tags = snapshot.data ?? [];
+        String query = _controller.text.trim().toLowerCase();
+        List<Tag> matchingTags = tags
+            .where((tag) =>
+                !_selectedTagPks.contains(tag.tagPk) &&
+                tag.name.toLowerCase().contains(query))
+            .take(5)
+            .toList();
+        List<Tag> selectedTags =
+            tags.where((tag) => _selectedTagPks.contains(tag.tagPk)).toList();
+
+        return ClipRRect(
+          borderRadius: BorderRadiusDirectional.circular(
+              getPlatform() == PlatformOS.isIOS ? 8 : 15),
+          child: Column(
+            children: [
+              Container(
+                color: appStateSettings["materialYou"]
+                    ? Theme.of(context).colorScheme.secondaryContainer
+                    : getColor(context, "canvasContainer"),
+                child: TextInput(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  handleOnTapOutside: false,
+                  padding: EdgeInsetsDirectional.zero,
+                  labelText: "tag".tr() + "...",
+                  icon: appStateSettings["outlinedIcons"]
+                      ? Icons.sell_outlined
+                      : Icons.sell_rounded,
+                  onTap: () => setState(() => _showDropdown = true),
+                  onChanged: (_) => setState(() => _showDropdown = true),
+                ),
+              ),
+              if (selectedTags.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  color: appStateSettings["materialYou"]
+                      ? Theme.of(context).colorScheme.secondaryContainer
+                      : getColor(context, "canvasContainer"),
+                  padding: const EdgeInsetsDirectional.only(
+                    start: 12,
+                    end: 12,
+                    bottom: 10,
+                  ),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (Tag tag in selectedTags)
+                        Tappable(
+                          color: Colors.transparent,
+                          borderRadius: 20,
+                          onTap: () => _toggleTag(tag),
+                          child: Container(
+                            padding: const EdgeInsetsDirectional.only(
+                              start: 10,
+                              end: 6,
+                              top: 5,
+                              bottom: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: dynamicPastel(
+                                context,
+                                HexColor(
+                                  tag.colour,
+                                  defaultColor:
+                                      Theme.of(context).colorScheme.primary,
+                                ),
+                                amount: 0.35,
+                              ),
+                              borderRadius:
+                                  BorderRadiusDirectional.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                TextFont(text: tag.name, fontSize: 13),
+                                SizedBox(width: 3),
+                                Icon(Icons.close_rounded, size: 15),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              AnimatedSize(
+                duration: Duration(milliseconds: 250),
+                curve: Curves.easeInOut,
+                alignment: AlignmentDirectional.topCenter,
+                child: !_showDropdown || matchingTags.isEmpty
+                    ? SizedBox(width: double.infinity)
+                    : Column(
+                        children: [
+                          HorizontalBreak(
+                            padding: EdgeInsetsDirectional.zero,
+                            color: appStateSettings["materialYou"]
+                                ? dynamicPastel(
+                                    context,
+                                    Theme.of(context)
+                                        .colorScheme
+                                        .secondaryContainer,
+                                    amount: 0.1,
+                                    inverse: true,
+                                  )
+                                : getColor(context, "lightDarkAccent"),
+                          ),
+                          Container(
+                            width: double.infinity,
+                            color: appStateSettings["materialYou"]
+                                ? Theme.of(context)
+                                    .colorScheme
+                                    .secondaryContainer
+                                : getColor(context, "canvasContainer"),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                for (Tag tag in matchingTags)
+                                  Tappable(
+                                    color: Colors.transparent,
+                                    borderRadius: 0,
+                                    onTap: () => _toggleTag(tag),
+                                    child: Padding(
+                                      padding: const EdgeInsetsDirectional.only(
+                                        start: 12,
+                                        end: 12,
+                                        top: 10,
+                                        bottom: 10,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 8,
+                                            height: 8,
+                                            decoration: BoxDecoration(
+                                              color: HexColor(
+                                                tag.colour,
+                                                defaultColor: Theme.of(context)
+                                                    .colorScheme
+                                                    .primary,
+                                              ),
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                          SizedBox(width: 9),
+                                          Expanded(
+                                            child: TextFont(
+                                              text: tag.name,
+                                              fontSize: 14,
+                                              maxLines: 1,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class AppliedFilterChips extends StatelessWidget {
   const AppliedFilterChips({
     required this.searchFilters,
@@ -1291,6 +1563,19 @@ class AppliedFilterChips extends StatelessWidget {
         label: "notes-contain".tr() + ": " + (searchFilters.noteContains ?? ""),
         openFiltersSelection: openFiltersSelection,
       ));
+    }
+    // Tags
+    for (Tag tag in await database.watchAllTags().first) {
+      if (searchFilters.tagPks.contains(tag.tagPk)) {
+        out.add(AppliedFilterChip(
+          label: tag.name,
+          customBorderColor: HexColor(
+            tag.colour,
+            defaultColor: Theme.of(context).colorScheme.primary,
+          ),
+          openFiltersSelection: openFiltersSelection,
+        ));
+      }
     }
     // Categories
     for (TransactionCategory category in await database.getAllCategories(

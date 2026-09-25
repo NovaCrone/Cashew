@@ -137,8 +137,14 @@ class PageFrameworkState extends State<PageFramework>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final double leftBackSwipeDetectionWidth = 30;
 
-  late ScrollController _scrollController =
-      widget.scrollController ?? ScrollController();
+  ScrollController? _scrollControllerValue;
+  bool? _ownsScrollControllerValue;
+  ScrollController get _scrollController {
+    _ownsScrollControllerValue ??= widget.scrollController == null;
+    return _scrollControllerValue ??=
+        widget.scrollController ?? ScrollController();
+  }
+
   late AnimationController _animationControllerShift =
       AnimationController(vsync: this);
   late AnimationController _animationControllerOpacity;
@@ -217,7 +223,10 @@ class PageFrameworkState extends State<PageFramework>
 
   void initState() {
     super.initState();
+    _ownsScrollControllerValue = widget.scrollController == null;
+    _scrollControllerValue = widget.scrollController ?? ScrollController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       double expandedHeaderHeight =
           getExpandedHeaderHeight(context, widget.expandedHeight);
       _animationControllerShift = AnimationController(
@@ -301,7 +310,10 @@ class PageFrameworkState extends State<PageFramework>
     _animationControllerDragY.dispose();
     _scrollToTopAnimationController.dispose();
 
-    _scrollController.dispose();
+    _scrollControllerValue?.removeListener(_scrollListener);
+    if (_ownsScrollControllerValue == true) {
+      _scrollControllerValue?.dispose();
+    }
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
