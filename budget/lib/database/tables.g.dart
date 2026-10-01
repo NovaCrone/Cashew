@@ -2313,6 +2313,12 @@ class $TransactionsTable extends Transactions
           defaultConstraints: GeneratedColumn.constraintIsAlways(
               'CHECK ("upcoming_transaction_notification" IN (0, 1))'),
           defaultValue: const Constant(true));
+  static const VerificationMeta _reminderDateTimeMeta =
+      const VerificationMeta('reminderDateTime');
+  @override
+  late final GeneratedColumn<DateTime> reminderDateTime =
+      GeneratedColumn<DateTime>('reminder_date_time', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
   static const VerificationMeta _typeMeta = const VerificationMeta('type');
   @override
   late final GeneratedColumnWithTypeConverter<TransactionSpecialType?, int>
@@ -2457,6 +2463,7 @@ class $TransactionsTable extends Transactions
         reoccurrence,
         endDate,
         upcomingTransactionNotification,
+        reminderDateTime,
         type,
         paid,
         createdAnotherFutureTransaction,
@@ -2572,6 +2579,12 @@ class $TransactionsTable extends Transactions
               data['upcoming_transaction_notification']!,
               _upcomingTransactionNotificationMeta));
     }
+    if (data.containsKey('reminder_date_time')) {
+      context.handle(
+          _reminderDateTimeMeta,
+          reminderDateTime.isAcceptableOrUnknown(
+              data['reminder_date_time']!, _reminderDateTimeMeta));
+    }
     context.handle(_typeMeta, const VerificationResult.success());
     if (data.containsKey('paid')) {
       context.handle(
@@ -2686,6 +2699,8 @@ class $TransactionsTable extends Transactions
       upcomingTransactionNotification: attachedDatabase.typeMapping.read(
           DriftSqlType.bool,
           data['${effectivePrefix}upcoming_transaction_notification']),
+      reminderDateTime: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}reminder_date_time']),
       type: $TransactionsTable.$convertertypen.fromSql(attachedDatabase
           .typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}type'])),
@@ -2776,6 +2791,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
   final BudgetReoccurence? reoccurrence;
   final DateTime? endDate;
   final bool? upcomingTransactionNotification;
+  final DateTime? reminderDateTime;
   final TransactionSpecialType? type;
   final bool paid;
   final bool? createdAnotherFutureTransaction;
@@ -2809,6 +2825,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       this.reoccurrence,
       this.endDate,
       this.upcomingTransactionNotification,
+      this.reminderDateTime,
       this.type,
       required this.paid,
       this.createdAnotherFutureTransaction,
@@ -2861,6 +2878,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     if (!nullToAbsent || upcomingTransactionNotification != null) {
       map['upcoming_transaction_notification'] =
           Variable<bool>(upcomingTransactionNotification);
+    }
+    if (!nullToAbsent || reminderDateTime != null) {
+      map['reminder_date_time'] = Variable<DateTime>(reminderDateTime);
     }
     if (!nullToAbsent || type != null) {
       map['type'] =
@@ -2952,6 +2972,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           upcomingTransactionNotification == null && nullToAbsent
               ? const Value.absent()
               : Value(upcomingTransactionNotification),
+      reminderDateTime: reminderDateTime == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reminderDateTime),
       type: type == null && nullToAbsent ? const Value.absent() : Value(type),
       paid: Value(paid),
       createdAnotherFutureTransaction:
@@ -3022,6 +3045,8 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       endDate: serializer.fromJson<DateTime?>(json['endDate']),
       upcomingTransactionNotification:
           serializer.fromJson<bool?>(json['upcomingTransactionNotification']),
+      reminderDateTime:
+          serializer.fromJson<DateTime?>(json['reminderDateTime']),
       type: $TransactionsTable.$convertertypen
           .fromJson(serializer.fromJson<int?>(json['type'])),
       paid: serializer.fromJson<bool>(json['paid']),
@@ -3071,6 +3096,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       'endDate': serializer.toJson<DateTime?>(endDate),
       'upcomingTransactionNotification':
           serializer.toJson<bool?>(upcomingTransactionNotification),
+      'reminderDateTime': serializer.toJson<DateTime?>(reminderDateTime),
       'type': serializer
           .toJson<int?>($TransactionsTable.$convertertypen.toJson(type)),
       'paid': serializer.toJson<bool>(paid),
@@ -3114,6 +3140,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           Value<BudgetReoccurence?> reoccurrence = const Value.absent(),
           Value<DateTime?> endDate = const Value.absent(),
           Value<bool?> upcomingTransactionNotification = const Value.absent(),
+          Value<DateTime?> reminderDateTime = const Value.absent(),
           Value<TransactionSpecialType?> type = const Value.absent(),
           bool? paid,
           Value<bool?> createdAnotherFutureTransaction = const Value.absent(),
@@ -3158,6 +3185,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
         upcomingTransactionNotification: upcomingTransactionNotification.present
             ? upcomingTransactionNotification.value
             : this.upcomingTransactionNotification,
+        reminderDateTime: reminderDateTime.present
+            ? reminderDateTime.value
+            : this.reminderDateTime,
         type: type.present ? type.value : this.type,
         paid: paid ?? this.paid,
         createdAnotherFutureTransaction: createdAnotherFutureTransaction.present
@@ -3211,6 +3241,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           ..write('endDate: $endDate, ')
           ..write(
               'upcomingTransactionNotification: $upcomingTransactionNotification, ')
+          ..write('reminderDateTime: $reminderDateTime, ')
           ..write('type: $type, ')
           ..write('paid: $paid, ')
           ..write(
@@ -3251,6 +3282,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
         reoccurrence,
         endDate,
         upcomingTransactionNotification,
+        reminderDateTime,
         type,
         paid,
         createdAnotherFutureTransaction,
@@ -3289,6 +3321,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           other.endDate == this.endDate &&
           other.upcomingTransactionNotification ==
               this.upcomingTransactionNotification &&
+          other.reminderDateTime == this.reminderDateTime &&
           other.type == this.type &&
           other.paid == this.paid &&
           other.createdAnotherFutureTransaction ==
@@ -3326,6 +3359,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
   final Value<BudgetReoccurence?> reoccurrence;
   final Value<DateTime?> endDate;
   final Value<bool?> upcomingTransactionNotification;
+  final Value<DateTime?> reminderDateTime;
   final Value<TransactionSpecialType?> type;
   final Value<bool> paid;
   final Value<bool?> createdAnotherFutureTransaction;
@@ -3360,6 +3394,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     this.reoccurrence = const Value.absent(),
     this.endDate = const Value.absent(),
     this.upcomingTransactionNotification = const Value.absent(),
+    this.reminderDateTime = const Value.absent(),
     this.type = const Value.absent(),
     this.paid = const Value.absent(),
     this.createdAnotherFutureTransaction = const Value.absent(),
@@ -3395,6 +3430,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     this.reoccurrence = const Value.absent(),
     this.endDate = const Value.absent(),
     this.upcomingTransactionNotification = const Value.absent(),
+    this.reminderDateTime = const Value.absent(),
     this.type = const Value.absent(),
     this.paid = const Value.absent(),
     this.createdAnotherFutureTransaction = const Value.absent(),
@@ -3433,6 +3469,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Expression<int>? reoccurrence,
     Expression<DateTime>? endDate,
     Expression<bool>? upcomingTransactionNotification,
+    Expression<DateTime>? reminderDateTime,
     Expression<int>? type,
     Expression<bool>? paid,
     Expression<bool>? createdAnotherFutureTransaction,
@@ -3470,6 +3507,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       if (endDate != null) 'end_date': endDate,
       if (upcomingTransactionNotification != null)
         'upcoming_transaction_notification': upcomingTransactionNotification,
+      if (reminderDateTime != null) 'reminder_date_time': reminderDateTime,
       if (type != null) 'type': type,
       if (paid != null) 'paid': paid,
       if (createdAnotherFutureTransaction != null)
@@ -3511,6 +3549,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       Value<BudgetReoccurence?>? reoccurrence,
       Value<DateTime?>? endDate,
       Value<bool?>? upcomingTransactionNotification,
+      Value<DateTime?>? reminderDateTime,
       Value<TransactionSpecialType?>? type,
       Value<bool>? paid,
       Value<bool?>? createdAnotherFutureTransaction,
@@ -3546,6 +3585,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       endDate: endDate ?? this.endDate,
       upcomingTransactionNotification: upcomingTransactionNotification ??
           this.upcomingTransactionNotification,
+      reminderDateTime: reminderDateTime ?? this.reminderDateTime,
       type: type ?? this.type,
       paid: paid ?? this.paid,
       createdAnotherFutureTransaction: createdAnotherFutureTransaction ??
@@ -3623,6 +3663,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     if (upcomingTransactionNotification.present) {
       map['upcoming_transaction_notification'] =
           Variable<bool>(upcomingTransactionNotification.value);
+    }
+    if (reminderDateTime.present) {
+      map['reminder_date_time'] = Variable<DateTime>(reminderDateTime.value);
     }
     if (type.present) {
       map['type'] =
@@ -3707,6 +3750,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
           ..write('endDate: $endDate, ')
           ..write(
               'upcomingTransactionNotification: $upcomingTransactionNotification, ')
+          ..write('reminderDateTime: $reminderDateTime, ')
           ..write('type: $type, ')
           ..write('paid: $paid, ')
           ..write(
@@ -8078,6 +8122,7 @@ typedef $$TransactionsTableInsertCompanionBuilder = TransactionsCompanion
   Value<BudgetReoccurence?> reoccurrence,
   Value<DateTime?> endDate,
   Value<bool?> upcomingTransactionNotification,
+  Value<DateTime?> reminderDateTime,
   Value<TransactionSpecialType?> type,
   Value<bool> paid,
   Value<bool?> createdAnotherFutureTransaction,
@@ -8114,6 +8159,7 @@ typedef $$TransactionsTableUpdateCompanionBuilder = TransactionsCompanion
   Value<BudgetReoccurence?> reoccurrence,
   Value<DateTime?> endDate,
   Value<bool?> upcomingTransactionNotification,
+  Value<DateTime?> reminderDateTime,
   Value<TransactionSpecialType?> type,
   Value<bool> paid,
   Value<bool?> createdAnotherFutureTransaction,
@@ -8170,6 +8216,7 @@ class $$TransactionsTableTableManager extends RootTableManager<
             Value<BudgetReoccurence?> reoccurrence = const Value.absent(),
             Value<DateTime?> endDate = const Value.absent(),
             Value<bool?> upcomingTransactionNotification = const Value.absent(),
+            Value<DateTime?> reminderDateTime = const Value.absent(),
             Value<TransactionSpecialType?> type = const Value.absent(),
             Value<bool> paid = const Value.absent(),
             Value<bool?> createdAnotherFutureTransaction = const Value.absent(),
@@ -8205,6 +8252,7 @@ class $$TransactionsTableTableManager extends RootTableManager<
             reoccurrence: reoccurrence,
             endDate: endDate,
             upcomingTransactionNotification: upcomingTransactionNotification,
+            reminderDateTime: reminderDateTime,
             type: type,
             paid: paid,
             createdAnotherFutureTransaction: createdAnotherFutureTransaction,
@@ -8240,6 +8288,7 @@ class $$TransactionsTableTableManager extends RootTableManager<
             Value<BudgetReoccurence?> reoccurrence = const Value.absent(),
             Value<DateTime?> endDate = const Value.absent(),
             Value<bool?> upcomingTransactionNotification = const Value.absent(),
+            Value<DateTime?> reminderDateTime = const Value.absent(),
             Value<TransactionSpecialType?> type = const Value.absent(),
             Value<bool> paid = const Value.absent(),
             Value<bool?> createdAnotherFutureTransaction = const Value.absent(),
@@ -8275,6 +8324,7 @@ class $$TransactionsTableTableManager extends RootTableManager<
             reoccurrence: reoccurrence,
             endDate: endDate,
             upcomingTransactionNotification: upcomingTransactionNotification,
+            reminderDateTime: reminderDateTime,
             type: type,
             paid: paid,
             createdAnotherFutureTransaction: createdAnotherFutureTransaction,
@@ -8373,6 +8423,11 @@ class $$TransactionsTableFilterComposer
           column: $state.table.upcomingTransactionNotification,
           builder: (column, joinBuilders) =>
               ColumnFilters(column, joinBuilders: joinBuilders));
+
+  ColumnFilters<DateTime> get reminderDateTime => $state.composableBuilder(
+      column: $state.table.reminderDateTime,
+      builder: (column, joinBuilders) =>
+          ColumnFilters(column, joinBuilders: joinBuilders));
 
   ColumnWithTypeConverterFilters<TransactionSpecialType?,
           TransactionSpecialType, int>
@@ -8598,6 +8653,11 @@ class $$TransactionsTableOrderingComposer
           column: $state.table.upcomingTransactionNotification,
           builder: (column, joinBuilders) =>
               ColumnOrderings(column, joinBuilders: joinBuilders));
+
+  ColumnOrderings<DateTime> get reminderDateTime => $state.composableBuilder(
+      column: $state.table.reminderDateTime,
+      builder: (column, joinBuilders) =>
+          ColumnOrderings(column, joinBuilders: joinBuilders));
 
   ColumnOrderings<int> get type => $state.composableBuilder(
       column: $state.table.type,

@@ -26,7 +26,7 @@ import 'package:budget/pages/activityPage.dart';
 import 'package:flutter/material.dart' show RangeValues;
 part 'tables.g.dart';
 
-int schemaVersionGlobal = 47;
+int schemaVersionGlobal = 48;
 
 // To update and migrate the database, check the README
 
@@ -308,6 +308,7 @@ class Transactions extends Table {
   DateTimeColumn get endDate => dateTime().nullable()();
   BoolColumn get upcomingTransactionNotification =>
       boolean().withDefault(const Constant(true)).nullable()();
+  DateTimeColumn get reminderDateTime => dateTime().nullable()();
   IntColumn get type => intEnum<TransactionSpecialType>().nullable()();
   // For credit and debts, paid will be true initially, then false when it is received/paid
   // this is the opposite of what is expected - but taht's because we only want it to count for the totals
@@ -1202,6 +1203,10 @@ class FinanceDatabase extends _$FinanceDatabase {
                         e.toString());
               }
             },
+            from47To48: (m, schema) async {
+              await m.addColumn(
+                  schema.transactions, schema.transactions.reminderDateTime);
+            },
           ),
         );
       },
@@ -1853,6 +1858,17 @@ class FinanceDatabase extends _$FinanceDatabase {
           })
           ..orderBy([(b) => OrderingTerm.desc(b.dateCreated)])
           ..limit(limit ?? DEFAULT_LIMIT))
+        .watch();
+  }
+
+  Stream<List<Transaction>> watchExpenseReminders() {
+    return (select(transactions)
+          ..where((tbl) =>
+              tbl.reminderDateTime.isNotNull() &
+              tbl.income.equals(false) &
+              tbl.categoryFk.equals("0").not() &
+              tbl.type.isNull())
+          ..orderBy([(tbl) => OrderingTerm.asc(tbl.reminderDateTime)]))
         .watch();
   }
 
@@ -3488,6 +3504,14 @@ class FinanceDatabase extends _$FinanceDatabase {
       // To make a parsed link, user needs to add space afterwards and we want to save this
       //note: transaction.note.trim(),
     );
+
+    if (transaction.income ||
+        transaction.type != null ||
+        transaction.categoryFk == "0" ||
+        (transaction.reminderDateTime != null &&
+            transaction.reminderDateTime!.isBefore(transaction.dateCreated))) {
+      transaction = transaction.copyWith(reminderDateTime: Value(null));
+    }
 
     if (transaction.type == TransactionSpecialType.credit) {
       transaction = transaction.copyWith(

@@ -141,6 +141,7 @@ class _AddTransactionPageState extends State<AddTransactionPage>
   String? selectedTitle;
   TransactionSpecialType? selectedType = null;
   DateTime selectedDate = DateTime.now();
+  DateTime? selectedReminderDateTime;
   DateTime? selectedEndDate = null;
   int selectedPeriodLength = 1;
   String selectedRecurrence = "Monthly";
@@ -200,6 +201,7 @@ class _AddTransactionPageState extends State<AddTransactionPage>
     setState(() {
       if (selectedCategory != category) selectedSubCategory = null;
       selectedCategory = category;
+      if (category.categoryPk == "0") selectedReminderDateTime = null;
     });
     return;
   }
@@ -255,6 +257,7 @@ class _AddTransactionPageState extends State<AddTransactionPage>
   void setSelectedType(String type) {
     setState(() {
       selectedType = transactionTypeDisplayToEnum[type];
+      if (selectedType != null) selectedReminderDateTime = null;
       if (selectedType == TransactionSpecialType.credit) {
         selectedIncome = false;
       } else if (selectedType == TransactionSpecialType.debt) {
@@ -365,6 +368,7 @@ class _AddTransactionPageState extends State<AddTransactionPage>
       // Tagging is only available for expenses
       if (selectedIncome == true) {
         selectedTagPk = null;
+        selectedReminderDateTime = null;
       }
 
       // Flip credit/debt selection if income/expense changed
@@ -674,6 +678,12 @@ class _AddTransactionPageState extends State<AddTransactionPage>
       categoryFk: selectedCategory?.categoryPk ?? "-1",
       subCategoryFk: selectedSubCategory?.categoryPk,
       dateCreated: selectedDate,
+      reminderDateTime: !selectedIncome &&
+              selectedType == null &&
+              selectedCategory?.categoryPk != "0" &&
+              (selectedReminderDateTime?.isBefore(selectedDate) == false)
+          ? selectedReminderDateTime
+          : null,
       endDate: selectedEndDate,
       dateTimeModified: null,
       income: selectedIncome,
@@ -751,6 +761,7 @@ class _AddTransactionPageState extends State<AddTransactionPage>
           new LinkHighlighter(initialText: widget.transaction!.note);
       selectedTitle = widget.transaction!.name;
       selectedDate = widget.transaction!.dateCreated;
+      selectedReminderDateTime = widget.transaction!.reminderDateTime;
       selectedEndDate = widget.transaction!.endDate;
       selectedWalletPk = widget.transaction!.walletFk;
       selectedAmount = widget.transaction!.amount.abs();
@@ -818,6 +829,9 @@ class _AddTransactionPageState extends State<AddTransactionPage>
               setSelectedDateTime: (DateTime date) {
                 setState(() {
                   selectedDate = date;
+                  if (selectedReminderDateTime?.isBefore(date) == true) {
+                    selectedReminderDateTime = null;
+                  }
                 });
               },
               selectedDate: widget.selectedDate,
@@ -1132,11 +1146,20 @@ class _AddTransactionPageState extends State<AddTransactionPage>
                     initialSelectedTime: TimeOfDay(
                         hour: selectedDate.hour, minute: selectedDate.minute),
                     setSelectedDate: (date) {
-                      selectedDate = date;
+                      setState(() {
+                        selectedDate = date;
+                        if (selectedReminderDateTime?.isBefore(date) == true) {
+                          selectedReminderDateTime = null;
+                        }
+                      });
                     },
                     setSelectedTime: (time) {
-                      selectedDate = selectedDate.copyWith(
-                          hour: time.hour, minute: time.minute);
+                      setState(() {
+                        selectedDate = selectedDate.copyWith(
+                            hour: time.hour, minute: time.minute);
+                        if (selectedReminderDateTime?.isBefore(selectedDate) ==
+                            true) selectedReminderDateTime = null;
+                      });
                     },
                   ),
                 ),
@@ -1608,6 +1631,84 @@ class _AddTransactionPageState extends State<AddTransactionPage>
                     : Column(
                         key: ValueKey(2),
                         children: [
+                          if (!selectedIncome &&
+                              selectedType == null &&
+                              selectedCategory?.categoryPk != "0") ...[
+                            Padding(
+                              padding: const EdgeInsetsDirectional.symmetric(
+                                  horizontal: 10),
+                              child: SettingsContainerSwitch(
+                                title: "transaction-reminder".tr(),
+                                icon: Icons.notifications_outlined,
+                                initialValue: selectedReminderDateTime != null,
+                                onSwitched: (enabled) async {
+                                  if (!enabled) {
+                                    WidgetsBinding.instance
+                                        .addPostFrameCallback((_) {
+                                      if (mounted) {
+                                        setState(() =>
+                                            selectedReminderDateTime = null);
+                                      }
+                                    });
+                                    return true;
+                                  }
+                                  final now = DateTime.now();
+                                  final earliest = selectedDate.isAfter(now)
+                                      ? selectedDate
+                                      : now;
+                                  var initial = earliest.copyWith(
+                                      second: 0,
+                                      millisecond: 0,
+                                      microsecond: 0);
+                                  if (initial.isBefore(earliest)) {
+                                    initial =
+                                        initial.add(const Duration(minutes: 1));
+                                  }
+                                  final picked = await showCustomDatePicker(
+                                      context, initial);
+                                  if (!mounted || picked == null) return false;
+                                  final reminder = initial.copyWith(
+                                      year: picked.year,
+                                      month: picked.month,
+                                      day: picked.day);
+                                  if (reminder.isBefore(selectedDate)) {
+                                    openSnackbar(SnackbarMessage(
+                                        title:
+                                            "reminder-after-transaction".tr()));
+                                    return false;
+                                  }
+                                  WidgetsBinding.instance
+                                      .addPostFrameCallback((_) {
+                                    if (mounted) {
+                                      setState(() =>
+                                          selectedReminderDateTime = reminder);
+                                    }
+                                  });
+                                  return true;
+                                },
+                              ),
+                            ),
+                            if (selectedReminderDateTime != null)
+                              DateButton(
+                                key: ValueKey(selectedReminderDateTime),
+                                initialSelectedDate: selectedReminderDateTime!,
+                                initialSelectedTime: TimeOfDay.fromDateTime(
+                                    selectedReminderDateTime!),
+                                minimumDateTime: selectedDate,
+                                setSelectedDate: (date) {
+                                  setState(
+                                      () => selectedReminderDateTime = date);
+                                },
+                                setSelectedTime: (time) {
+                                  setState(() {
+                                    selectedReminderDateTime =
+                                        selectedReminderDateTime!.copyWith(
+                                            hour: time.hour,
+                                            minute: time.minute);
+                                  });
+                                },
+                              ),
+                          ],
                           HorizontalBreakAbove(
                             enabled: enableDoubleColumn(context) &&
                                 (selectedType == null ||
@@ -2382,6 +2483,7 @@ class DateButton extends StatefulWidget {
     required this.initialSelectedTime,
     required this.setSelectedDate,
     required this.setSelectedTime,
+    this.minimumDateTime,
     this.internalPadding =
         const EdgeInsetsDirectional.only(start: 20, top: 6, bottom: 6, end: 4),
     this.timeBackgroundColor,
@@ -2390,6 +2492,7 @@ class DateButton extends StatefulWidget {
   final TimeOfDay initialSelectedTime;
   final Function(DateTime) setSelectedDate;
   final Function(TimeOfDay) setSelectedTime;
+  final DateTime? minimumDateTime;
   final EdgeInsetsDirectional internalPadding;
   final Color? timeBackgroundColor;
 
@@ -2401,6 +2504,13 @@ class _DateButtonState extends State<DateButton> {
   late DateTime selectedDate = widget.initialSelectedDate;
   late TimeOfDay selectedTime = widget.initialSelectedTime;
 
+  bool isBeforeMinimum(DateTime date) {
+    if (widget.minimumDateTime == null ||
+        !date.isBefore(widget.minimumDateTime!)) return false;
+    openSnackbar(SnackbarMessage(title: "reminder-after-transaction".tr()));
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     String wordedDate = getWordedDateShortMore(selectedDate,
@@ -2411,6 +2521,7 @@ class _DateButtonState extends State<DateButton> {
     return Tappable(
       color: Colors.transparent,
       onLongPress: () {
+        if (isBeforeMinimum(DateTime.now())) return;
         if (DateTime(
               selectedDate.year,
               selectedDate.month,
@@ -2445,14 +2556,16 @@ class _DateButtonState extends State<DateButton> {
       onTap: () async {
         final DateTime picked =
             (await showCustomDatePicker(context, selectedDate) ?? selectedDate);
+        final DateTime newDate = selectedDate.copyWith(
+          year: picked.year,
+          month: picked.month,
+          day: picked.day,
+          hour: selectedTime.hour,
+          minute: selectedTime.minute,
+        );
+        if (!mounted || isBeforeMinimum(newDate)) return;
         setState(() {
-          selectedDate = selectedDate.copyWith(
-            year: picked.year,
-            month: picked.month,
-            day: picked.day,
-            hour: selectedTime.hour,
-            minute: selectedTime.minute,
-          );
+          selectedDate = newDate;
         });
         widget.setSelectedDate(selectedDate);
       },
@@ -2497,12 +2610,14 @@ class _DateButtonState extends State<DateButton> {
                   context,
                   selectedTime,
                 );
-                if (newTime != null) {
-                  setState(() {
-                    selectedTime = newTime;
-                  });
-                }
-                widget.setSelectedTime(newTime ?? selectedTime);
+                if (!mounted ||
+                    newTime == null ||
+                    isBeforeMinimum(selectedDate.copyWith(
+                        hour: newTime.hour, minute: newTime.minute))) return;
+                setState(() {
+                  selectedTime = newTime;
+                });
+                widget.setSelectedTime(newTime);
               },
               borderRadius: 5,
               child: Padding(
