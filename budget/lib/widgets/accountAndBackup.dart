@@ -72,6 +72,48 @@ class GoogleAuthClient extends http.BaseClient {
 
 signIn.GoogleSignIn? googleSignIn;
 signIn.GoogleSignInAccount? googleUser;
+Future<void>? _googleSignInInitialization;
+
+Future<signIn.GoogleSignIn> _initializeGoogleSignIn() async {
+  final instance = signIn.GoogleSignIn.instance;
+  googleSignIn = instance;
+  _googleSignInInitialization ??= instance.initialize(
+    clientId: getPlatform() == PlatformOS.isIOS
+        ? DefaultFirebaseOptions.currentPlatform.iosClientId
+        : null,
+  );
+  await _googleSignInInitialization;
+  return instance;
+}
+
+Future<Map<String, String>> getGoogleAuthorizationHeaders({
+  bool gmailPermissions = false,
+  bool drivePermissionsAttachments = false,
+  bool promptIfNecessary = true,
+}) async {
+  final account = googleUser;
+  if (account == null) throw StateError("Google account is not signed in");
+
+  final scopes = gmailPermissions
+      ? [
+          gMail.GmailApi.gmailReadonlyScope,
+          gMail.GmailApi.gmailModifyScope,
+        ]
+      : [
+          drivePermissionsAttachments
+              ? drive.DriveApi.driveFileScope
+              : drive.DriveApi.driveAppdataScope,
+        ];
+  final headers = await account.authorizationClient.authorizationHeaders(
+    scopes,
+    promptIfNecessary: promptIfNecessary,
+  );
+  if (headers == null) {
+    throw StateError(
+        "Google did not provide authorization for the requested scopes");
+  }
+  return headers;
+}
 
 Future<bool> signInGoogle(
     {BuildContext? context,
@@ -89,10 +131,8 @@ Future<bool> signInGoogle(
         googleUser != null &&
         !(await testIfHasGmailAccess())) {
       await signOutGoogle();
-      googleSignIn = null;
       settingsPageStateKey.currentState?.refreshState();
     } else if (googleUser == null) {
-      googleSignIn = null;
       settingsPageStateKey.currentState?.refreshState();
     }
     //Check connection
@@ -129,33 +169,21 @@ Future<bool> signInGoogle(
               ]
             : [])
       ];
-      googleSignIn = getPlatform() == PlatformOS.isIOS
-          ? signIn.GoogleSignIn(
-              clientId: DefaultFirebaseOptions.currentPlatform.iosClientId,
-              scopes: scopes)
-          : signIn.GoogleSignIn.standard(scopes: scopes);
-      // googleSignIn?.currentUser?.clearAuthCache();
-
-      final signIn.GoogleSignInAccount? account = silentSignIn == true
-          ?
-          // kIsWeb
-          //     ? await googleSignIn?.signInSilently()
-          // Google Sign-in silent on web no longer gives access to the scopes
-          // https://pub.dev/packages/google_sign_in_web#differences-between-google-identity-services-sdk-and-google-sign-in-for-web-sdk
-          // await googleSignIn?.signInSilently().then((value) async {
-          //     return await googleSignIn?.signIn();
-          //   })
-          // Currently we do not use silent sign in anymore, as it does not allow any access
-          // to GDrive or other tools, so there is no point to get the username/email form silent
-          kIsWeb
-              ? await googleSignIn?.signIn()
-              : await googleSignIn?.signInSilently()
-          : await googleSignIn?.signIn();
+      final googleSignInInstance = await _initializeGoogleSignIn();
+      final signIn.GoogleSignInAccount? account =
+          silentSignIn == true && !kIsWeb
+              ? await googleSignInInstance.attemptLightweightAuthentication()
+              : await googleSignInInstance.authenticate(scopeHint: scopes);
 
       if (account != null) {
-        // print("ACCOUNT");
-        // print(account);
         googleUser = account;
+        final headers = await account.authorizationClient.authorizationHeaders(
+          scopes,
+          promptIfNecessary: silentSignIn != true,
+        );
+        if (headers == null) {
+          throw StateError("Google permissions were not granted");
+        }
         await updateSettings("currentUserEmail", googleUser?.email ?? "",
             updateGlobalState: false);
       } else {
@@ -213,7 +241,10 @@ void refreshUIAfterLoginChange() {
 Future<bool> testIfHasGmailAccess() async {
   print("TESTING GMAIL");
   try {
-    final authHeaders = await googleUser!.authHeaders;
+    final authHeaders = await getGoogleAuthorizationHeaders(
+      gmailPermissions: true,
+      promptIfNecessary: false,
+    );
     final authenticateClient = GoogleAuthClient(authHeaders);
     gMail.GmailApi gmailApi = gMail.GmailApi(authenticateClient);
     gMail.ListMessagesResponse results = await gmailApi.users.messages
@@ -227,7 +258,8 @@ Future<bool> testIfHasGmailAccess() async {
 }
 
 Future<bool> signOutGoogle() async {
-  await googleSignIn?.signOut();
+  final googleSignInInstance = await _initializeGoogleSignIn();
+  await googleSignInInstance.signOut();
   googleUser = null;
   await updateSettings("currentUserEmail", "", updateGlobalState: false);
   await updateSettings("hasSignedIn", false, updateGlobalState: false);
@@ -418,7 +450,10 @@ Future<void> createBackup(
 
     DBFileInfo currentDBFileInfo = await getCurrentDBFileInfo();
 
-    final authHeaders = await googleUser!.authHeaders;
+    final authHeaders = await getGoogleAuthorizationHeaders(
+      gmailPermissions: true,
+      promptIfNecessary: false,
+    );
     final authenticateClient = GoogleAuthClient(authHeaders);
     final driveApi = drive.DriveApi(authenticateClient);
 
@@ -483,7 +518,7 @@ Future<void> deleteRecentBackups(context, amountToKeep,
       loadingIndeterminateKey.currentState?.setVisibility(true);
     }
 
-    final authHeaders = await googleUser!.authHeaders;
+    final authHeaders = await getGoogleAuthorizationHeaders();
     final authenticateClient = GoogleAuthClient(authHeaders);
     final driveApi = drive.DriveApi(authenticateClient);
 
@@ -764,7 +799,7 @@ class GoogleAccountLoginButtonState extends State<GoogleAccountLoginButton> {
 
 Future<(drive.DriveApi? driveApi, List<drive.File>?)> getDriveFiles() async {
   try {
-    final authHeaders = await googleUser!.authHeaders;
+    final authHeaders = await getGoogleAuthorizationHeaders();
     final authenticateClient = GoogleAuthClient(authHeaders);
     drive.DriveApi driveApi = drive.DriveApi(authenticateClient);
 

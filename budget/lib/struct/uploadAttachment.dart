@@ -113,7 +113,9 @@ Future<String?> uploadFileToDrive({
     await signInGoogle(drivePermissionsAttachments: true);
   }
 
-  final authHeaders = await googleUser!.authHeaders;
+  final authHeaders = await getGoogleAuthorizationHeaders(
+    drivePermissionsAttachments: true,
+  );
   final authenticateClient = GoogleAuthClient(authHeaders);
   final driveApi = drive.DriveApi(authenticateClient);
 

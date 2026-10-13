@@ -1,5 +1,5 @@
-# Uncomment this line to define a global platform for your project
-# platform :ios, '12.0'
+# Define the minimum iOS version supported by the current Xcode SDK.
+platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -28,7 +28,7 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 flutter_ios_podfile_setup
 
 target 'Runner' do
-  use_frameworks!
+  use_frameworks! :linkage => :static
   use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
@@ -40,5 +40,25 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    target.build_configurations.each do |build_configuration|
+      build_configuration.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      build_configuration.build_settings['SWIFT_VERSION'] = '5.0'
+      build_configuration.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
+      build_configuration.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+        if ['firebase_auth', 'cloud_firestore', 'firebase_core'].include?(target.name)
+          build_configuration.build_settings['DEFINES_MODULE'] = 'NO'
+        end
+      if ['gRPC-Core', 'gRPC-C++'].include?(target.name)
+        build_configuration.build_settings['OTHER_CPLUSPLUSFLAGS'] = '$(inherited) -Wno-error=missing-template-arg-list-after-template-kw -Wno-missing-template-arg-list-after-template-kw'
+      end
+    end
+    next unless target.respond_to?(:source_build_phase)
+
+    target.source_build_phase.files.each do |build_file|
+      compiler_flags = build_file.settings && build_file.settings['COMPILER_FLAGS']
+      next unless compiler_flags
+
+      build_file.settings['COMPILER_FLAGS'] = compiler_flags.gsub('-GCC_WARN_INHIBIT_ALL_WARNINGS', '')
+    end
   end
 end

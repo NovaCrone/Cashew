@@ -45,10 +45,13 @@ Future<FirebaseFirestore?> firebaseGetDBInstance() async {
       // GoogleSignInAccount? googleUser = googleUser;
 
       GoogleSignInAuthentication? googleAuth = await googleUser?.authentication;
+      final idToken = googleAuth?.idToken;
+      if (idToken == null) {
+        throw StateError("Google sign-in did not return an ID token");
+      }
 
       _credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth?.accessToken,
-        idToken: googleAuth?.idToken,
+        idToken: idToken,
       );
 
       await FirebaseAuth.instance.signInWithCredential(_credential!);
