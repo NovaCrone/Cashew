@@ -201,7 +201,22 @@ class TransactionEntryTag extends StatelessWidget {
               Row(
                 children: [
                   for (int i = 0; i < tags.length; i++)
-                    if (tagsToShow[i]) Flexible(child: tags[i])
+                    if (tagsToShow[i]) Flexible(child: tags[i]),
+                  if (transaction.reminderDateTime != null)
+                    Tooltip(
+                      message: "transaction-reminder".tr(),
+                      child: Padding(
+                        padding:
+                            const EdgeInsetsDirectional.only(start: 4, end: 3),
+                        child: Icon(
+                          appStateSettings["outlinedIcons"]
+                              ? Icons.notifications_active_outlined
+                              : Icons.notifications_active_rounded,
+                          size: 14,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
                 ],
               ),
               if (transaction.sharedKey != null ||
