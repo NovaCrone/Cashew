@@ -1214,5 +1214,8 @@
   "paste-maps-link": "Paste Maps Link",
   "set-location": "Set Location",
   "invalid-maps-link": "Couldn't Read Location",
-  "invalid-maps-link-description": "Paste a link shared from Apple Maps or Google Maps, or coordinates like 13.0827, 80.2707"
+  "invalid-maps-link-description": "Paste a link shared from Apple Maps or Google Maps, or coordinates like 13.0827, 80.2707",
+  "loading": "Loading...",
+  "most-recent": "most recent",
+  "no-located-transactions": "No transactions with a location in this date range"
 }

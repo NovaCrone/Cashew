@@ -1,3 +1,5 @@
+import 'package:budget/pages/transactionsMapPage.dart';
+import 'package:budget/widgets/transactionsMap/nativeMap.dart';
 import 'package:budget/functions.dart';
 import 'package:budget/pages/addTransactionPage.dart';
 import 'package:budget/pages/transactionFilters.dart';
@@ -279,6 +281,20 @@ class TransactionsSearchPageState extends State<TransactionsSearchPage>
                             : Icons.filter_alt_rounded,
                       ),
                     ),
+                    if (nativeMapSupported) ...[
+                      SizedBox(width: 7),
+                      ButtonIcon(
+                        onTap: () {
+                          pushRoute(
+                            context,
+                            TransactionsMapPage(initialFilters: searchFilters),
+                          );
+                        },
+                        icon: appStateSettings["outlinedIcons"]
+                            ? Icons.map_outlined
+                            : Icons.map_rounded,
+                      ),
+                    ],
                     SizedBox(width: 20),
                   ],
                 ),

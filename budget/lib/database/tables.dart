@@ -1225,6 +1225,15 @@ class FinanceDatabase extends _$FinanceDatabase {
         );
       },
       beforeOpen: (details) async {
+        // Partial index for the transactions map: only rows with coordinates,
+        // ordered by date, so a date range never scans the whole table
+        try {
+          await customStatement(
+              "CREATE INDEX IF NOT EXISTS idx_transactions_located "
+              "ON transactions (date_created) WHERE latitude IS NOT NULL");
+        } catch (e) {
+          print("Error creating located transactions index: " + e.toString());
+        }
         // Partial index: only contains transactions that have coordinates but
         // no place name yet, so the pending lookup never scans the whole table
         try {
@@ -1633,6 +1642,39 @@ class FinanceDatabase extends _$FinanceDatabase {
       GeneratedColumn<DateTime> dateColumn, DateTime date) {
     return dateColumn.isBetweenValues(date.justDay(),
         date.justDay(dayOffset: 1).subtract(Duration(milliseconds: 1)));
+  }
+
+  // Transactions shown on the map. Only located transactions are read: the
+  // partial index idx_transactions_located only contains rows with coordinates,
+  // and it is ordered by date so a date range is a direct index lookup.
+  Future<List<TransactionWithCategory>> getTransactionsForMap(
+      SearchFilters searchFilters,
+      {int limit = 5000}) async {
+    final query = select(transactions).join([
+      innerJoin(categories,
+          categories.categoryPk.equalsExp(transactions.categoryFk)),
+    ])
+      ..where(transactions.latitude.isNotNull() &
+          transactions.longitude.isNotNull() &
+          onlyShowIfFollowsSearchFilters(
+            transactions,
+            searchFilters,
+            joinedWithBudgets: false,
+            joinedWithCategories: true,
+            joinedWithObjectives: false,
+            joinedWithSubcategoriesTable: null,
+            joinedWithObjectiveLoans: null,
+          ))
+      ..orderBy([OrderingTerm.desc(transactions.dateCreated)])
+      ..limit(limit);
+    final rows = await query.get();
+    return rows
+        .map((row) => TransactionWithCategory(
+              transaction: row.readTable(transactions),
+              category: row.readTable(categories),
+              objectiveLoan: null,
+            ))
+        .toList();
   }
 
   Stream<RangeValues> getHighestLowestAmount(SearchFilters searchFilters) {

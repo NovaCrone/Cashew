@@ -135,68 +135,189 @@ Future<void> openLocationInMaps(TransactionLocation location) async {
   }
 }
 
-/// Extracts coordinates from text pasted from Apple Maps / Google Maps
-/// (full links, short links, or plain "lat, lng").
-/// Returns null if no coordinates could be found.
+/// Extracts a location from text pasted from Apple Maps / Google Maps
+/// (full links, short links, shared text, or plain "lat, lng").
+/// Returns null if no location could be found.
+///
+/// Steps, cheapest first:
+/// 1. Coordinates written in the pasted text/link (no network)
+/// 2. Short links: follow redirects reading only headers, then look again
+/// 3. Google place links without coordinates (place name + internal id):
+///    look up the place name with the phone's built-in geocoder
+/// 4. Last resort: read the start of the page (max 64 KB) for coordinates
 Future<TransactionLocation?> parseLocationFromPastedText(String input) async {
   String text = input.trim();
   if (text.isEmpty) return null;
-  TransactionLocation? found = _findCoordinates(Uri.decodeFull(text));
+  TransactionLocation? found = _findCoordinates(_normalize(text));
   if (found != null) return found;
-  // Short links (maps.app.goo.gl, goo.gl/maps, maps.apple/p/...) hide the
-  // coordinates behind a redirect. Follow the redirects reading only the
-  // headers - the page itself is never downloaded.
-  RegExpMatch? urlMatch = RegExp(r'https?://\S+').firstMatch(text);
-  if (urlMatch == null) return null;
-  String? resolved = await _resolveRedirects(urlMatch.group(0)!);
-  if (resolved == null) return null;
-  return _findCoordinates(Uri.decodeFull(resolved));
-}
 
-TransactionLocation? _findCoordinates(String text) {
-  const String num = r'(-?\d{1,3}(?:\.\d+)?)';
-  List<RegExp> patterns = [
-    RegExp(r'!3d' + num + r'!4d' + num), // Google place data (most precise)
-    RegExp(r'@' + num + r',' + num), // Google /@lat,lng,zoom
-    RegExp(r'[?&](?:ll|sll|q|query|daddr|destination|coordinate|center)=' +
-        num +
-        r',\s*' +
-        num), // Apple & Google query params
-    RegExp(r'geo:' + num + r',' + num),
-    RegExp(r'^\s*' + num + r'\s*,\s*' + num + r'\s*$'), // plain "lat, lng"
-  ];
-  for (RegExp pattern in patterns) {
-    RegExpMatch? m = pattern.firstMatch(text);
-    if (m == null) continue;
-    double? lat = double.tryParse(m.group(1)!);
-    double? lng = double.tryParse(m.group(2)!);
-    if (lat == null || lng == null) continue;
-    if (lat.abs() > 90 || lng.abs() > 180) continue;
-    if (lat == 0 && lng == 0) continue;
-    return TransactionLocation(lat, lng);
+  RegExpMatch? urlMatch = RegExp(r'https?://\S+').firstMatch(text);
+  String? finalUrl;
+  if (urlMatch != null) {
+    finalUrl = await _resolveRedirects(urlMatch.group(0)!);
+    if (finalUrl != null) {
+      found = _findCoordinates(_normalize(finalUrl));
+      if (found != null) return found;
+    }
+  }
+
+  // Place name from the link, or the text shared along with the link
+  // (Google Maps "Share" often sends "Name, Address https://maps.app...")
+  List<String> placeQueries = [
+    if (finalUrl != null) ..._placeNamesFromUrl(finalUrl),
+    if (urlMatch != null)
+      text.replaceAll(urlMatch.group(0)!, " ").replaceAll(RegExp(r'\s+'), " ").trim(),
+  ].where((q) => q.length >= 3).toList();
+  for (String query in placeQueries) {
+    TransactionLocation? byName = await _geocodePlaceName(query);
+    if (byName != null) return byName;
+  }
+
+  if (finalUrl != null) {
+    String? page = await _readPageStart(finalUrl);
+    if (page != null) {
+      found = _findCoordinates(_normalize(page));
+      if (found != null) return found;
+    }
   }
   return null;
 }
 
+String _normalize(String text) {
+  String decoded = text;
+  try {
+    decoded = Uri.decodeFull(text);
+  } catch (_) {}
+  // Google writes spaces as "+" (e.g. /search/13.08,+80.27)
+  return decoded.replaceAll("+", " ");
+}
+
+TransactionLocation? _findCoordinates(String text) {
+  const String num = r'(-?\d{1,3}(?:\.\d+)?)';
+  const String sep = r'\s*,\s*';
+  List<RegExp> patterns = [
+    RegExp(r'!3d' + num + r'!4d' + num), // Google place data (most precise)
+    RegExp(r'@' + num + sep + num), // Google /@lat,lng,zoom
+    RegExp(r'/(?:search|place|dir)/' + num + sep + num), // Google dropped pin
+    RegExp(r'[?&](?:ll|sll|q|query|daddr|destination|coordinate|center)=' +
+        num +
+        sep +
+        num), // Apple & Google query params
+    RegExp(r'geo:' + num + sep + num),
+    RegExp(r'^\s*' + num + sep + num + r'\s*$'), // plain "lat, lng"
+    // Coordinates embedded in a Google page, e.g. "center=13.08%2C80.27"
+    RegExp(r'\[\s*null\s*,\s*null\s*,\s*' + num + sep + num + r'\s*\]'),
+  ];
+  for (RegExp pattern in patterns) {
+    for (RegExpMatch m in pattern.allMatches(text)) {
+      double? lat = double.tryParse(m.group(1)!);
+      double? lng = double.tryParse(m.group(2)!);
+      if (lat == null || lng == null) continue;
+      if (lat.abs() > 90 || lng.abs() > 180) continue;
+      if (lat == 0 && lng == 0) continue;
+      // Require some precision so "1,2" in random text is not a location
+      if (!m.group(1)!.contains(".") || !m.group(2)!.contains(".")) continue;
+      return TransactionLocation(lat, lng);
+    }
+  }
+  return null;
+}
+
+/// Place names in Google links: /maps/place/<name>/... or ?q=<name>
+List<String> _placeNamesFromUrl(String url) {
+  List<String> out = [];
+  Uri? uri = Uri.tryParse(url);
+  if (uri == null) return out;
+  int placeIndex = uri.pathSegments.indexOf("place");
+  if (placeIndex != -1 && placeIndex + 1 < uri.pathSegments.length) {
+    out.add(uri.pathSegments[placeIndex + 1]);
+  }
+  for (String key in ["q", "query", "daddr", "destination"]) {
+    String? value = uri.queryParameters[key];
+    if (value != null) out.add(value);
+  }
+  return out
+      .map((q) => q.replaceAll("+", " ").trim())
+      .where((q) => q.isNotEmpty)
+      .toList();
+}
+
+Future<TransactionLocation?> _geocodePlaceName(String query) async {
+  if (!locationSupported) return null;
+  try {
+    List<Location> results = await Geocoding()
+        .locationFromAddress(query)
+        .timeout(const Duration(seconds: 8));
+    if (results.isEmpty) return null;
+    String name = query.split(",").first.trim();
+    return TransactionLocation(results.first.latitude, results.first.longitude,
+        name: name.isEmpty ? null : name);
+  } catch (e) {
+    print("Could not geocode place name: " + e.toString());
+    return null;
+  }
+}
+
+const String _browserUserAgent =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+
+/// Follows redirects reading only response headers (no page download).
 Future<String?> _resolveRedirects(String url) async {
   if (kIsWeb) return null;
-  HttpClient client = HttpClient()..connectionTimeout = Duration(seconds: 8);
+  HttpClient client = HttpClient()
+    ..connectionTimeout = Duration(seconds: 8)
+    ..userAgent = _browserUserAgent;
   try {
     Uri current = Uri.parse(url);
-    for (int i = 0; i < 6; i++) {
-      final request = await client.headUrl(current);
-      request.followRedirects = false;
-      final response = await request.close();
-      await response.drain();
-      String? next = response.headers.value("location");
+    for (int i = 0; i < 8; i++) {
+      String? next;
+      // Some servers reject HEAD - fall back to GET, still reading headers only
+      for (String method in ["HEAD", "GET"]) {
+        final request = await client.openUrl(method, current);
+        request.followRedirects = false;
+        final response = await request.close();
+        final int status = response.statusCode;
+        next = response.headers.value("location");
+        // Discard any body without downloading it
+        if (method == "HEAD") {
+          await response.drain();
+        } else {
+          await response.listen(null).cancel();
+        }
+        if (next != null || (status >= 200 && status < 300)) break;
+      }
       if (next == null) return current.toString();
       current = current.resolve(next);
-      if (_findCoordinates(Uri.decodeFull(current.toString())) != null)
+      if (_findCoordinates(_normalize(current.toString())) != null)
         return current.toString();
     }
     return current.toString();
   } catch (e) {
     print("Could not resolve maps link: " + e.toString());
+    return null;
+  } finally {
+    client.close(force: true);
+  }
+}
+
+/// Reads at most [maxBytes] of a page, used only when nothing else worked.
+Future<String?> _readPageStart(String url, {int maxBytes = 64 * 1024}) async {
+  if (kIsWeb) return null;
+  HttpClient client = HttpClient()
+    ..connectionTimeout = Duration(seconds: 8)
+    ..userAgent = _browserUserAgent;
+  try {
+    final request = await client.getUrl(Uri.parse(url));
+    final response = await request.close();
+    List<int> bytes = [];
+    await for (List<int> chunk in response) {
+      bytes.addAll(chunk);
+      if (bytes.length >= maxBytes) break;
+    }
+    return String.fromCharCodes(bytes.take(maxBytes));
+  } catch (e) {
+    print("Could not read maps page: " + e.toString());
     return null;
   } finally {
     client.close(force: true);

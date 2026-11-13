@@ -101,6 +101,9 @@ dependencies:
   app_links: ^6.1.4
   geolocator: ^14.0.2
   geocoding: ^5.0.1
+  apple_maps_flutter: ^1.4.0
+  google_maps_flutter_android: ^2.21.0
+  google_maps_flutter_platform_interface: ^2.18.0
 dependency_overrides:
   win32: ^5.15.0
   expandable_page_view: ^1.0.17
