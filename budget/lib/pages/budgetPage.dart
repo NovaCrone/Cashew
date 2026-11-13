@@ -115,7 +115,8 @@ class _BudgetPageContentState extends State<_BudgetPageContent> {
   @override
   void initState() {
     Future.delayed(Duration.zero, () {
-      if (isPastBudget == true) premiumPopupPastBudgets(context);
+      // Premium popup for past budget periods disabled
+      // if (isPastBudget == true) premiumPopupPastBudgets(context);
     });
     super.initState();
   }
@@ -123,9 +124,11 @@ class _BudgetPageContentState extends State<_BudgetPageContent> {
   void changeSelectedDateRange(int delta) async {
     int index = (dateForRangeIndex) - delta;
     if (index >= 0) {
-      if (budgetHistoryDismissedPremium == false)
-        budgetHistoryDismissedPremium = await premiumPopupPastBudgets(context);
-      if (budgetHistoryDismissedPremium) {
+      // Premium popup for past budget periods disabled
+      // if (budgetHistoryDismissedPremium == false)
+      //   budgetHistoryDismissedPremium = await premiumPopupPastBudgets(context);
+      // if (budgetHistoryDismissedPremium) {
+      if (true) {
         setState(() {
           dateForRangeIndex = index;
           dateForRange = getDatePastToDetermineBudgetDate(

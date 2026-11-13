@@ -1,3 +1,4 @@
+import 'package:budget/struct/transactionLocation.dart';
 import 'package:animations/animations.dart';
 import 'package:budget/colors.dart';
 import 'package:budget/database/initializeDefaultDatabase.dart';
@@ -417,6 +418,9 @@ class PageNavigationFrameworkState extends State<PageNavigationFramework> {
       if (isDatabaseCorruptedPopupShown) return;
 
       await initializeNotificationsPlatform();
+
+      // Look up place names for transactions saved while offline
+      resolvePendingLocationNames();
 
       bool isChangelogShown = showChangelog(context);
       bool isRatingPopupShown = false;

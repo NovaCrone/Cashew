@@ -201,6 +201,8 @@ Future<Map<String, dynamic>> getDefaultPreferences() async {
     "premiumPopupAddTransactionCount": -5,
     "premiumPopupAddTransactionLastShown": DateTime.now().toString(),
     "premiumPopupFreeSeen": false,
+    "locationPermissionAsked": false,
+    "pendingLocationNames": false,
     "previewDemo": false,
     "purchaseID": null,
     "showAccountLabelTagInTransactionEntry": false,

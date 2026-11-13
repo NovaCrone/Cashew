@@ -69,6 +69,7 @@ import 'package:budget/widgets/outlinedButtonStacked.dart';
 import 'package:budget/widgets/tappableTextEntry.dart';
 import 'package:budget/widgets/transactionEntry/transactionEntryTag.dart';
 import 'dart:math';
+import 'package:budget/struct/transactionLocation.dart';
 
 //TODO
 //only show the tags that correspond to selected category
@@ -142,6 +143,8 @@ class _AddTransactionPageState extends State<AddTransactionPage>
   TransactionSpecialType? selectedType = null;
   DateTime selectedDate = DateTime.now();
   DateTime? selectedReminderDateTime;
+  TransactionLocation? selectedLocation;
+  bool loadingLocation = false;
   DateTime? selectedEndDate = null;
   int selectedPeriodLength = 1;
   String selectedRecurrence = "Monthly";
@@ -698,6 +701,9 @@ class _AddTransactionPageState extends State<AddTransactionPage>
       methodAdded:
           widget.transaction != null ? widget.transaction!.methodAdded : null,
       createdAnotherFutureTransaction: createdAnotherFutureTransaction,
+      latitude: selectedLocation?.latitude,
+      longitude: selectedLocation?.longitude,
+      locationName: selectedLocation?.name,
       sharedKey: removeShared == false && widget.transaction != null
           ? widget.transaction!.sharedKey
           : null,
@@ -729,6 +735,11 @@ class _AddTransactionPageState extends State<AddTransactionPage>
       tagFk: selectedIncome ? null : selectedTagPk,
     );
 
+    // Saved without a place name (offline) - let the app fill it in later
+    if (createdTransaction.latitude != null &&
+        createdTransaction.locationName == null) {
+      updateSettings("pendingLocationNames", true, updateGlobalState: false);
+    }
     return createdTransaction;
   }
 
@@ -748,6 +759,147 @@ class _AddTransactionPageState extends State<AddTransactionPage>
 
   late TextEditingController _titleInputController;
   late TextEditingController _noteInputController;
+
+  Future<void> captureCurrentLocation({bool userInitiated = false}) async {
+    if (!locationSupported) return;
+    if (mounted) setState(() => loadingLocation = true);
+    TransactionLocation? location =
+        await getCurrentTransactionLocation(userInitiated: userInitiated);
+    if (!mounted) return;
+    setState(() {
+      loadingLocation = false;
+      if (location != null) selectedLocation = location;
+    });
+    if (location != null) resolveLocationName();
+  }
+
+  // Reverse geocode once; the name is stored so it is never fetched again
+  Future<void> resolveLocationName({bool cache = false}) async {
+    TransactionLocation? location = selectedLocation;
+    if (location == null || location.name != null) return;
+    String? name =
+        await reverseGeocodeLocation(location.latitude, location.longitude);
+    if (name == null || !mounted) return;
+    if (selectedLocation?.latitude != location.latitude ||
+        selectedLocation?.longitude != location.longitude ||
+        selectedLocation?.name != null) return;
+    setState(() => selectedLocation = location.withName(name));
+    if (cache && widget.transaction != null) {
+      database.updateTransactionLocationName(
+          widget.transaction!.transactionPk, name);
+    }
+  }
+
+  void openLocationOptions() {
+    openBottomSheet(
+      context,
+      PopupFramework(
+        title: "location".tr(),
+        subtitle: selectedLocation?.coordinatesString,
+        child: Column(
+          children: [
+            if (selectedLocation != null)
+              SettingsContainer(
+                title: "view-on-map".tr(),
+                icon: Icons.map_outlined,
+                onTap: () {
+                  popRoute(context);
+                  openLocationInMaps(selectedLocation!);
+                },
+              ),
+            if (selectedLocation != null)
+              SettingsContainer(
+                title: "edit-location-name".tr(),
+                icon: Icons.edit_outlined,
+                onTap: () async {
+                  popRoute(context);
+                  String newName = selectedLocation?.name ?? "";
+                  await openBottomSheet(
+                    context,
+                    popupWithKeyboard: true,
+                    PopupFramework(
+                      title: "edit-location-name".tr(),
+                      child: SelectText(
+                        icon: Icons.place_outlined,
+                        selectedText: selectedLocation?.name,
+                        placeholder: "location".tr(),
+                        setSelectedText: (text) => newName = text,
+                        buttonLabel: "set-name".tr(),
+                      ),
+                    ),
+                  );
+                  if (!mounted || selectedLocation == null) return;
+                  setState(() {
+                    selectedLocation = selectedLocation!.withName(
+                        newName.trim().isEmpty ? null : newName.trim());
+                  });
+                },
+              ),
+            SettingsContainer(
+              title: "edit-location".tr(),
+              description: "edit-location-description".tr(),
+              icon: Icons.edit_location_alt_outlined,
+              onTap: () async {
+                popRoute(context);
+                String pasted = "";
+                await openBottomSheet(
+                  context,
+                  popupWithKeyboard: true,
+                  PopupFramework(
+                    title: "edit-location".tr(),
+                    subtitle: "edit-location-description".tr(),
+                    child: SelectText(
+                      icon: Icons.link_rounded,
+                      placeholder: "paste-maps-link".tr(),
+                      setSelectedText: (text) => pasted = text,
+                      buttonLabel: "set-location".tr(),
+                      widgetBeside: IconButton(
+                        icon: Icon(Icons.content_paste_rounded),
+                        onPressed: () async {
+                          ClipboardData? data =
+                              await Clipboard.getData(Clipboard.kTextPlain);
+                          if (data?.text == null) return;
+                          pasted = data!.text!;
+                          popRoute(context);
+                        },
+                      ),
+                    ),
+                  ),
+                );
+                if (!mounted || pasted.trim().isEmpty) return;
+                setState(() => loadingLocation = true);
+                TransactionLocation? location =
+                    await parseLocationFromPastedText(pasted);
+                if (!mounted) return;
+                setState(() {
+                  loadingLocation = false;
+                  if (location != null) selectedLocation = location;
+                });
+                if (location == null) {
+                  openSnackbar(SnackbarMessage(
+                    title: "invalid-maps-link".tr(),
+                    description: "invalid-maps-link-description".tr(),
+                    icon: Icons.location_off_outlined,
+                  ));
+                  return;
+                }
+                resolveLocationName();
+              },
+            ),
+            if (selectedLocation != null)
+              SettingsContainer(
+                title: "remove-location".tr(),
+                icon: Icons.location_off_outlined,
+                onTap: () {
+                  popRoute(context);
+                  setState(() => selectedLocation = null);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -783,6 +935,14 @@ class _AddTransactionPageState extends State<AddTransactionPage>
       selectedObjectiveLoanPk = widget.transaction!.objectiveLoanFk;
       selectedExcludedBudgetPks = widget.transaction!.budgetFksExclude ?? [];
       selectedTagPk = widget.transaction!.tagFk;
+      if (widget.transaction!.latitude != null &&
+          widget.transaction!.longitude != null) {
+        selectedLocation = TransactionLocation(
+          widget.transaction!.latitude!,
+          widget.transaction!.longitude!,
+          name: widget.transaction!.locationName,
+        );
+      }
       // var amountString = widget.transaction!.amount.toStringAsFixed(2);
       // if (amountString.substring(amountString.length - 2) == "00") {
       //   selectedAmountCalculation =
@@ -802,6 +962,10 @@ class _AddTransactionPageState extends State<AddTransactionPage>
 
       _titleInputController = new TextEditingController();
       _noteInputController = new LinkHighlighter();
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        captureCurrentLocation();
+      });
 
       Future.delayed(Duration(milliseconds: 0), () async {
         if (widget.transferBalancePopup) {
@@ -1709,6 +1873,33 @@ class _AddTransactionPageState extends State<AddTransactionPage>
                                 },
                               ),
                           ],
+                          if (locationSupported)
+                            Padding(
+                              padding: const EdgeInsetsDirectional.symmetric(
+                                  horizontal: 10),
+                              child: SettingsContainer(
+                                title: selectedLocation?.name ??
+                                    (selectedLocation != null
+                                        ? "location".tr()
+                                        : loadingLocation
+                                            ? "getting-location".tr()
+                                            : "unknown-location".tr()),
+                                description:
+                                    selectedLocation?.coordinatesString,
+                                icon: selectedLocation != null
+                                    ? Icons.place_outlined
+                                    : Icons.location_off_outlined,
+                                afterWidget: loadingLocation
+                                    ? SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2),
+                                      )
+                                    : Icon(Icons.chevron_right_rounded),
+                                onTap: openLocationOptions,
+                              ),
+                            ),
                           HorizontalBreakAbove(
                             enabled: enableDoubleColumn(context) &&
                                 (selectedType == null ||

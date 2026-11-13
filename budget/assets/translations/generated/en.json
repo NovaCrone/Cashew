@@ -1202,5 +1202,17 @@
   "duplicate-budget-question": "Duplicate Budget?",
   "duplicate-budget": "Duplicate Budget",
   "transaction-reminder": "Transaction Reminder",
-  "reminder-after-transaction": "Reminder must be on or after the transaction date and time"
+  "reminder-after-transaction": "Reminder must be on or after the transaction date and time",
+  "location": "Location",
+  "unknown-location": "Unknown Location",
+  "getting-location": "Getting Location...",
+  "view-on-map": "View on Map",
+  "edit-location-name": "Edit Location Name",
+  "remove-location": "Remove Location",
+  "edit-location": "Edit Location",
+  "edit-location-description": "Drop a pin in Apple Maps or Google Maps, tap Share, copy the link and paste it here",
+  "paste-maps-link": "Paste Maps Link",
+  "set-location": "Set Location",
+  "invalid-maps-link": "Couldn't Read Location",
+  "invalid-maps-link-description": "Paste a link shared from Apple Maps or Google Maps, or coordinates like 13.0827, 80.2707"
 }

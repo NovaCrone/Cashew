@@ -27,7 +27,7 @@ import 'package:budget/pages/activityPage.dart';
 import 'package:flutter/material.dart' show RangeValues;
 part 'tables.g.dart';
 
-int schemaVersionGlobal = 48;
+int schemaVersionGlobal = 49;
 
 // To update and migrate the database, check the README
 
@@ -310,6 +310,11 @@ class Transactions extends Table {
   BoolColumn get upcomingTransactionNotification =>
       boolean().withDefault(const Constant(true)).nullable()();
   DateTimeColumn get reminderDateTime => dateTime().nullable()();
+  // Location captured when the transaction was added (GPS, works offline)
+  RealColumn get latitude => real().nullable()();
+  RealColumn get longitude => real().nullable()();
+  // Reverse-geocoded place name, cached so it is only fetched once
+  TextColumn get locationName => text().nullable()();
   IntColumn get type => intEnum<TransactionSpecialType>().nullable()();
   // For credit and debts, paid will be true initially, then false when it is received/paid
   // this is the opposite of what is expected - but taht's because we only want it to count for the totals
@@ -1208,10 +1213,28 @@ class FinanceDatabase extends _$FinanceDatabase {
               await m.addColumn(
                   schema.transactions, schema.transactions.reminderDateTime);
             },
+            from48To49: (m, schema) async {
+              await m.addColumn(
+                  schema.transactions, schema.transactions.latitude);
+              await m.addColumn(
+                  schema.transactions, schema.transactions.longitude);
+              await m.addColumn(
+                  schema.transactions, schema.transactions.locationName);
+            },
           ),
         );
       },
       beforeOpen: (details) async {
+        // Partial index: only contains transactions that have coordinates but
+        // no place name yet, so the pending lookup never scans the whole table
+        try {
+          await customStatement(
+              "CREATE INDEX IF NOT EXISTS idx_transactions_pending_location_name "
+              "ON transactions (date_created) "
+              "WHERE latitude IS NOT NULL AND location_name IS NULL");
+        } catch (e) {
+          print("Error creating pending location index: " + e.toString());
+        }
         // This code exists because migration 42to43 may have not run correctly...
         // See explanation in 41to42
         try {
@@ -3479,6 +3502,25 @@ class FinanceDatabase extends _$FinanceDatabase {
   }
 
   // create or update a new transaction
+  // Uses the partial index idx_transactions_pending_location_name, so only
+  // the rows still waiting for a name are read (never the whole table)
+  Future<List<Transaction>> getTransactionsMissingLocationName(
+      {int limit = 25}) {
+    return (select(transactions)
+          ..where((t) => t.latitude.isNotNull() & t.locationName.isNull())
+          ..orderBy([(t) => OrderingTerm.desc(t.dateCreated)])
+          ..limit(limit))
+        .get();
+  }
+
+  // Caches the reverse-geocoded name without modifying any other field
+  Future<int> updateTransactionLocationName(
+      String transactionPk, String? locationName) {
+    return (update(transactions)
+          ..where((t) => t.transactionPk.equals(transactionPk)))
+        .write(TransactionsCompanion(locationName: Value(locationName)));
+  }
+
   Future<int?>? createOrUpdateTransaction(
     Transaction transaction, {
     bool insert = false,
@@ -5995,6 +6037,10 @@ class FinanceDatabase extends _$FinanceDatabase {
             ? tbl.skipPaid.equals(true) & tbl.type.isNotNull()
             : Constant(false);
 
+    Expression<bool> hasReminder = searchFilters.hasReminder == true
+        ? tbl.reminderDateTime.isNotNull()
+        : Constant(true);
+
     Expression<bool> isLongTermLoanBorrowed = Constant(false);
     Expression<bool> isLongTermLoanLent = Constant(false);
     if (searchFilters.transactionTypes
@@ -6098,6 +6144,7 @@ class FinanceDatabase extends _$FinanceDatabase {
         (isIncome | isExpense) &
         isPositiveCashFlow &
         (isPaid | isNotPaid | isSkippedPaid) &
+        hasReminder &
         isInDateTimeRange &
         isTransactionType &
         (includeShared | includeAdded) &

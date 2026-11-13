@@ -47,6 +47,7 @@ class SearchFilters {
     this.searchQuery,
     this.titleContains,
     this.noteContains,
+    this.hasReminder,
   }) {
     walletPks = this.walletPks.isEmpty ? [] : this.walletPks;
     categoryPks = this.categoryPks.isEmpty ? [] : this.categoryPks;
@@ -95,6 +96,7 @@ class SearchFilters {
   String? searchQuery;
   String? titleContains;
   String? noteContains;
+  bool? hasReminder; // true = only transactions with a reminder set
 
   SearchFilters copyWith({
     List<String>? walletPks,
@@ -117,6 +119,7 @@ class SearchFilters {
     String? searchQuery,
     String? titleContains,
     String? noteContains,
+    bool? hasReminder,
   }) {
     return SearchFilters(
       walletPks: walletPks ?? this.walletPks,
@@ -141,6 +144,7 @@ class SearchFilters {
       searchQuery: searchQuery ?? this.searchQuery,
       titleContains: titleContains ?? this.titleContains,
       noteContains: noteContains ?? this.noteContains,
+      hasReminder: hasReminder ?? this.hasReminder,
     );
   }
 
@@ -165,6 +169,7 @@ class SearchFilters {
     searchQuery = null;
     titleContains = null;
     noteContains = null;
+    hasReminder = null;
   }
 
   bool isClear({bool? ignoreDateTimeRange, bool? ignoreSearchQuery}) {
@@ -187,7 +192,8 @@ class SearchFilters {
         (ignoreDateTimeRange == true || dateTimeRange == null) &&
         (ignoreSearchQuery == true || searchQuery == null) &&
         titleContains == null &&
-        noteContains == null)
+        noteContains == null &&
+        hasReminder != true)
       return true;
     else
       return false;
@@ -319,6 +325,9 @@ class SearchFilters {
               noteContains = value;
             }
             break;
+          case 'hasReminder':
+            hasReminder = value == "true" ? true : null;
+            break;
           default:
             break;
         }
@@ -387,6 +396,7 @@ class SearchFilters {
     outString += "searchQuery:-:" + searchQuery.toString() + ":-:";
     outString += "titleContains:-:" + titleContains.toString() + ":-:";
     outString += "noteContains:-:" + noteContains.toString() + ":-:";
+    if (hasReminder == true) outString += "hasReminder:-:true:-:";
     //print(outString);
     return outString;
   }
@@ -803,6 +813,16 @@ class _TransactionFiltersSelectionState
           getSelected: (PaidStatus item) {
             return selectedFilters.paidStatus.contains(item);
           },
+        ),
+        SelectChips(
+          items: [true],
+          getLabel: (bool item) => "transaction-reminder".tr(),
+          onSelected: (bool item) {
+            selectedFilters.hasReminder =
+                selectedFilters.hasReminder == true ? null : true;
+            setSearchFilters();
+          },
+          getSelected: (bool item) => selectedFilters.hasReminder == true,
         ),
         if (appStateSettings["showMethodAdded"] == true)
           StreamBuilder<List<MethodAdded?>>(
@@ -1686,6 +1706,13 @@ class AppliedFilterChips extends StatelessWidget {
     if (searchFilters.paidStatus.contains(PaidStatus.skipped)) {
       out.add(AppliedFilterChip(
         label: "skipped".tr(),
+        openFiltersSelection: openFiltersSelection,
+      ));
+    }
+    // Reminders
+    if (searchFilters.hasReminder == true) {
+      out.add(AppliedFilterChip(
+        label: "transaction-reminder".tr(),
         openFiltersSelection: openFiltersSelection,
       ));
     }

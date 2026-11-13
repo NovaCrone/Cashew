@@ -2395,6 +2395,24 @@ class $TransactionsTable extends Transactions
   late final GeneratedColumn<DateTime> reminderDateTime =
       GeneratedColumn<DateTime>('reminder_date_time', aliasedName, true,
           type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _latitudeMeta =
+      const VerificationMeta('latitude');
+  @override
+  late final GeneratedColumn<double> latitude = GeneratedColumn<double>(
+      'latitude', aliasedName, true,
+      type: DriftSqlType.double, requiredDuringInsert: false);
+  static const VerificationMeta _longitudeMeta =
+      const VerificationMeta('longitude');
+  @override
+  late final GeneratedColumn<double> longitude = GeneratedColumn<double>(
+      'longitude', aliasedName, true,
+      type: DriftSqlType.double, requiredDuringInsert: false);
+  static const VerificationMeta _locationNameMeta =
+      const VerificationMeta('locationName');
+  @override
+  late final GeneratedColumn<String> locationName = GeneratedColumn<String>(
+      'location_name', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   late final GeneratedColumnWithTypeConverter<TransactionSpecialType?, int>
       type = GeneratedColumn<int>('type', aliasedName, true,
@@ -2533,6 +2551,9 @@ class $TransactionsTable extends Transactions
         endDate,
         upcomingTransactionNotification,
         reminderDateTime,
+        latitude,
+        longitude,
+        locationName,
         type,
         paid,
         createdAnotherFutureTransaction,
@@ -2653,6 +2674,20 @@ class $TransactionsTable extends Transactions
           reminderDateTime.isAcceptableOrUnknown(
               data['reminder_date_time']!, _reminderDateTimeMeta));
     }
+    if (data.containsKey('latitude')) {
+      context.handle(_latitudeMeta,
+          latitude.isAcceptableOrUnknown(data['latitude']!, _latitudeMeta));
+    }
+    if (data.containsKey('longitude')) {
+      context.handle(_longitudeMeta,
+          longitude.isAcceptableOrUnknown(data['longitude']!, _longitudeMeta));
+    }
+    if (data.containsKey('location_name')) {
+      context.handle(
+          _locationNameMeta,
+          locationName.isAcceptableOrUnknown(
+              data['location_name']!, _locationNameMeta));
+    }
     if (data.containsKey('paid')) {
       context.handle(
           _paidMeta, paid.isAcceptableOrUnknown(data['paid']!, _paidMeta));
@@ -2765,6 +2800,12 @@ class $TransactionsTable extends Transactions
           data['${effectivePrefix}upcoming_transaction_notification']),
       reminderDateTime: attachedDatabase.typeMapping.read(
           DriftSqlType.dateTime, data['${effectivePrefix}reminder_date_time']),
+      latitude: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}latitude']),
+      longitude: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}longitude']),
+      locationName: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}location_name']),
       type: $TransactionsTable.$convertertypen.fromSql(attachedDatabase
           .typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}type'])),
@@ -2856,6 +2897,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
   final DateTime? endDate;
   final bool? upcomingTransactionNotification;
   final DateTime? reminderDateTime;
+  final double? latitude;
+  final double? longitude;
+  final String? locationName;
   final TransactionSpecialType? type;
   final bool paid;
   final bool? createdAnotherFutureTransaction;
@@ -2890,6 +2934,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       this.endDate,
       this.upcomingTransactionNotification,
       this.reminderDateTime,
+      this.latitude,
+      this.longitude,
+      this.locationName,
       this.type,
       required this.paid,
       this.createdAnotherFutureTransaction,
@@ -2945,6 +2992,15 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     }
     if (!nullToAbsent || reminderDateTime != null) {
       map['reminder_date_time'] = Variable<DateTime>(reminderDateTime);
+    }
+    if (!nullToAbsent || latitude != null) {
+      map['latitude'] = Variable<double>(latitude);
+    }
+    if (!nullToAbsent || longitude != null) {
+      map['longitude'] = Variable<double>(longitude);
+    }
+    if (!nullToAbsent || locationName != null) {
+      map['location_name'] = Variable<String>(locationName);
     }
     if (!nullToAbsent || type != null) {
       map['type'] =
@@ -3039,6 +3095,15 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       reminderDateTime: reminderDateTime == null && nullToAbsent
           ? const Value.absent()
           : Value(reminderDateTime),
+      latitude: latitude == null && nullToAbsent
+          ? const Value.absent()
+          : Value(latitude),
+      longitude: longitude == null && nullToAbsent
+          ? const Value.absent()
+          : Value(longitude),
+      locationName: locationName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(locationName),
       type: type == null && nullToAbsent ? const Value.absent() : Value(type),
       paid: Value(paid),
       createdAnotherFutureTransaction:
@@ -3111,6 +3176,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           serializer.fromJson<bool?>(json['upcomingTransactionNotification']),
       reminderDateTime:
           serializer.fromJson<DateTime?>(json['reminderDateTime']),
+      latitude: serializer.fromJson<double?>(json['latitude']),
+      longitude: serializer.fromJson<double?>(json['longitude']),
+      locationName: serializer.fromJson<String?>(json['locationName']),
       type: $TransactionsTable.$convertertypen
           .fromJson(serializer.fromJson<int?>(json['type'])),
       paid: serializer.fromJson<bool>(json['paid']),
@@ -3161,6 +3229,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       'upcomingTransactionNotification':
           serializer.toJson<bool?>(upcomingTransactionNotification),
       'reminderDateTime': serializer.toJson<DateTime?>(reminderDateTime),
+      'latitude': serializer.toJson<double?>(latitude),
+      'longitude': serializer.toJson<double?>(longitude),
+      'locationName': serializer.toJson<String?>(locationName),
       'type': serializer
           .toJson<int?>($TransactionsTable.$convertertypen.toJson(type)),
       'paid': serializer.toJson<bool>(paid),
@@ -3205,6 +3276,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           Value<DateTime?> endDate = const Value.absent(),
           Value<bool?> upcomingTransactionNotification = const Value.absent(),
           Value<DateTime?> reminderDateTime = const Value.absent(),
+          Value<double?> latitude = const Value.absent(),
+          Value<double?> longitude = const Value.absent(),
+          Value<String?> locationName = const Value.absent(),
           Value<TransactionSpecialType?> type = const Value.absent(),
           bool? paid,
           Value<bool?> createdAnotherFutureTransaction = const Value.absent(),
@@ -3252,6 +3326,10 @@ class Transaction extends DataClass implements Insertable<Transaction> {
         reminderDateTime: reminderDateTime.present
             ? reminderDateTime.value
             : this.reminderDateTime,
+        latitude: latitude.present ? latitude.value : this.latitude,
+        longitude: longitude.present ? longitude.value : this.longitude,
+        locationName:
+            locationName.present ? locationName.value : this.locationName,
         type: type.present ? type.value : this.type,
         paid: paid ?? this.paid,
         createdAnotherFutureTransaction: createdAnotherFutureTransaction.present
@@ -3325,6 +3403,11 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       reminderDateTime: data.reminderDateTime.present
           ? data.reminderDateTime.value
           : this.reminderDateTime,
+      latitude: data.latitude.present ? data.latitude.value : this.latitude,
+      longitude: data.longitude.present ? data.longitude.value : this.longitude,
+      locationName: data.locationName.present
+          ? data.locationName.value
+          : this.locationName,
       type: data.type.present ? data.type.value : this.type,
       paid: data.paid.present ? data.paid.value : this.paid,
       createdAnotherFutureTransaction:
@@ -3386,6 +3469,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           ..write(
               'upcomingTransactionNotification: $upcomingTransactionNotification, ')
           ..write('reminderDateTime: $reminderDateTime, ')
+          ..write('latitude: $latitude, ')
+          ..write('longitude: $longitude, ')
+          ..write('locationName: $locationName, ')
           ..write('type: $type, ')
           ..write('paid: $paid, ')
           ..write(
@@ -3427,6 +3513,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
         endDate,
         upcomingTransactionNotification,
         reminderDateTime,
+        latitude,
+        longitude,
+        locationName,
         type,
         paid,
         createdAnotherFutureTransaction,
@@ -3466,6 +3555,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           other.upcomingTransactionNotification ==
               this.upcomingTransactionNotification &&
           other.reminderDateTime == this.reminderDateTime &&
+          other.latitude == this.latitude &&
+          other.longitude == this.longitude &&
+          other.locationName == this.locationName &&
           other.type == this.type &&
           other.paid == this.paid &&
           other.createdAnotherFutureTransaction ==
@@ -3504,6 +3596,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
   final Value<DateTime?> endDate;
   final Value<bool?> upcomingTransactionNotification;
   final Value<DateTime?> reminderDateTime;
+  final Value<double?> latitude;
+  final Value<double?> longitude;
+  final Value<String?> locationName;
   final Value<TransactionSpecialType?> type;
   final Value<bool> paid;
   final Value<bool?> createdAnotherFutureTransaction;
@@ -3539,6 +3634,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     this.endDate = const Value.absent(),
     this.upcomingTransactionNotification = const Value.absent(),
     this.reminderDateTime = const Value.absent(),
+    this.latitude = const Value.absent(),
+    this.longitude = const Value.absent(),
+    this.locationName = const Value.absent(),
     this.type = const Value.absent(),
     this.paid = const Value.absent(),
     this.createdAnotherFutureTransaction = const Value.absent(),
@@ -3575,6 +3673,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     this.endDate = const Value.absent(),
     this.upcomingTransactionNotification = const Value.absent(),
     this.reminderDateTime = const Value.absent(),
+    this.latitude = const Value.absent(),
+    this.longitude = const Value.absent(),
+    this.locationName = const Value.absent(),
     this.type = const Value.absent(),
     this.paid = const Value.absent(),
     this.createdAnotherFutureTransaction = const Value.absent(),
@@ -3614,6 +3715,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Expression<DateTime>? endDate,
     Expression<bool>? upcomingTransactionNotification,
     Expression<DateTime>? reminderDateTime,
+    Expression<double>? latitude,
+    Expression<double>? longitude,
+    Expression<String>? locationName,
     Expression<int>? type,
     Expression<bool>? paid,
     Expression<bool>? createdAnotherFutureTransaction,
@@ -3652,6 +3756,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       if (upcomingTransactionNotification != null)
         'upcoming_transaction_notification': upcomingTransactionNotification,
       if (reminderDateTime != null) 'reminder_date_time': reminderDateTime,
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
+      if (locationName != null) 'location_name': locationName,
       if (type != null) 'type': type,
       if (paid != null) 'paid': paid,
       if (createdAnotherFutureTransaction != null)
@@ -3694,6 +3801,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       Value<DateTime?>? endDate,
       Value<bool?>? upcomingTransactionNotification,
       Value<DateTime?>? reminderDateTime,
+      Value<double?>? latitude,
+      Value<double?>? longitude,
+      Value<String?>? locationName,
       Value<TransactionSpecialType?>? type,
       Value<bool>? paid,
       Value<bool?>? createdAnotherFutureTransaction,
@@ -3730,6 +3840,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       upcomingTransactionNotification: upcomingTransactionNotification ??
           this.upcomingTransactionNotification,
       reminderDateTime: reminderDateTime ?? this.reminderDateTime,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      locationName: locationName ?? this.locationName,
       type: type ?? this.type,
       paid: paid ?? this.paid,
       createdAnotherFutureTransaction: createdAnotherFutureTransaction ??
@@ -3810,6 +3923,15 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     }
     if (reminderDateTime.present) {
       map['reminder_date_time'] = Variable<DateTime>(reminderDateTime.value);
+    }
+    if (latitude.present) {
+      map['latitude'] = Variable<double>(latitude.value);
+    }
+    if (longitude.present) {
+      map['longitude'] = Variable<double>(longitude.value);
+    }
+    if (locationName.present) {
+      map['location_name'] = Variable<String>(locationName.value);
     }
     if (type.present) {
       map['type'] =
@@ -3895,6 +4017,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
           ..write(
               'upcomingTransactionNotification: $upcomingTransactionNotification, ')
           ..write('reminderDateTime: $reminderDateTime, ')
+          ..write('latitude: $latitude, ')
+          ..write('longitude: $longitude, ')
+          ..write('locationName: $locationName, ')
           ..write('type: $type, ')
           ..write('paid: $paid, ')
           ..write(
@@ -9260,6 +9385,9 @@ typedef $$TransactionsTableCreateCompanionBuilder = TransactionsCompanion
   Value<DateTime?> endDate,
   Value<bool?> upcomingTransactionNotification,
   Value<DateTime?> reminderDateTime,
+  Value<double?> latitude,
+  Value<double?> longitude,
+  Value<String?> locationName,
   Value<TransactionSpecialType?> type,
   Value<bool> paid,
   Value<bool?> createdAnotherFutureTransaction,
@@ -9297,6 +9425,9 @@ typedef $$TransactionsTableUpdateCompanionBuilder = TransactionsCompanion
   Value<DateTime?> endDate,
   Value<bool?> upcomingTransactionNotification,
   Value<DateTime?> reminderDateTime,
+  Value<double?> latitude,
+  Value<double?> longitude,
+  Value<String?> locationName,
   Value<TransactionSpecialType?> type,
   Value<bool> paid,
   Value<bool?> createdAnotherFutureTransaction,
@@ -9477,6 +9608,15 @@ class $$TransactionsTableFilterComposer
   ColumnFilters<DateTime> get reminderDateTime => $composableBuilder(
       column: $table.reminderDateTime,
       builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get latitude => $composableBuilder(
+      column: $table.latitude, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get longitude => $composableBuilder(
+      column: $table.longitude, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get locationName => $composableBuilder(
+      column: $table.locationName, builder: (column) => ColumnFilters(column));
 
   ColumnWithTypeConverterFilters<TransactionSpecialType?,
           TransactionSpecialType, int>
@@ -9728,6 +9868,16 @@ class $$TransactionsTableOrderingComposer
       column: $table.reminderDateTime,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<double> get latitude => $composableBuilder(
+      column: $table.latitude, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get longitude => $composableBuilder(
+      column: $table.longitude, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get locationName => $composableBuilder(
+      column: $table.locationName,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<int> get type => $composableBuilder(
       column: $table.type, builder: (column) => ColumnOrderings(column));
 
@@ -9969,6 +10119,15 @@ class $$TransactionsTableAnnotationComposer
   GeneratedColumn<DateTime> get reminderDateTime => $composableBuilder(
       column: $table.reminderDateTime, builder: (column) => column);
 
+  GeneratedColumn<double> get latitude =>
+      $composableBuilder(column: $table.latitude, builder: (column) => column);
+
+  GeneratedColumn<double> get longitude =>
+      $composableBuilder(column: $table.longitude, builder: (column) => column);
+
+  GeneratedColumn<String> get locationName => $composableBuilder(
+      column: $table.locationName, builder: (column) => column);
+
   GeneratedColumnWithTypeConverter<TransactionSpecialType?, int> get type =>
       $composableBuilder(column: $table.type, builder: (column) => column);
 
@@ -10204,6 +10363,9 @@ class $$TransactionsTableTableManager extends RootTableManager<
             Value<DateTime?> endDate = const Value.absent(),
             Value<bool?> upcomingTransactionNotification = const Value.absent(),
             Value<DateTime?> reminderDateTime = const Value.absent(),
+            Value<double?> latitude = const Value.absent(),
+            Value<double?> longitude = const Value.absent(),
+            Value<String?> locationName = const Value.absent(),
             Value<TransactionSpecialType?> type = const Value.absent(),
             Value<bool> paid = const Value.absent(),
             Value<bool?> createdAnotherFutureTransaction = const Value.absent(),
@@ -10240,6 +10402,9 @@ class $$TransactionsTableTableManager extends RootTableManager<
             endDate: endDate,
             upcomingTransactionNotification: upcomingTransactionNotification,
             reminderDateTime: reminderDateTime,
+            latitude: latitude,
+            longitude: longitude,
+            locationName: locationName,
             type: type,
             paid: paid,
             createdAnotherFutureTransaction: createdAnotherFutureTransaction,
@@ -10276,6 +10441,9 @@ class $$TransactionsTableTableManager extends RootTableManager<
             Value<DateTime?> endDate = const Value.absent(),
             Value<bool?> upcomingTransactionNotification = const Value.absent(),
             Value<DateTime?> reminderDateTime = const Value.absent(),
+            Value<double?> latitude = const Value.absent(),
+            Value<double?> longitude = const Value.absent(),
+            Value<String?> locationName = const Value.absent(),
             Value<TransactionSpecialType?> type = const Value.absent(),
             Value<bool> paid = const Value.absent(),
             Value<bool?> createdAnotherFutureTransaction = const Value.absent(),
@@ -10312,6 +10480,9 @@ class $$TransactionsTableTableManager extends RootTableManager<
             endDate: endDate,
             upcomingTransactionNotification: upcomingTransactionNotification,
             reminderDateTime: reminderDateTime,
+            latitude: latitude,
+            longitude: longitude,
+            locationName: locationName,
             type: type,
             paid: paid,
             createdAnotherFutureTransaction: createdAnotherFutureTransaction,
